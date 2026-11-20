@@ -6,12 +6,14 @@ local characterJumps, accountJumps, sessionJumps = 0, 0, 0
 local sessionStarted, lastJump
 local wasAirborne, jumpRequested
 local takeoffWindow = 0.25
+local minimumJumpInterval = 0.83
+local jumpDataVersion = 1
 
 local function ReadStats()
     local now = GetTime()
     local elapsed = now - sessionStarted
     local pace = elapsed >= 1 and math.floor(sessionJumps * 3600 / elapsed + 0.5) or 0
-    return characterJumps, accountJumps, sessionJumps, pace, math.floor(now - lastJump)
+    return characterJumps, accountJumps, sessionJumps, pace, math.floor(now - (lastJump or sessionStarted))
 end
 
 local function CanCountJump()
@@ -35,7 +37,7 @@ local function CheckTakeoff()
     jumpRequested = nil
 
     -- shortcut: a simultaneous ledge fall can resemble takeoff. Use a native jump event if one becomes available.
-    if withinWindow and tookOff and CanCountJump() then
+    if withinWindow and tookOff and (not lastJump or now >= lastJump + minimumJumpInterval) and CanCountJump() then
         characterJumps = characterJumps + 1
         accountJumps = accountJumps + 1
         sessionJumps = sessionJumps + 1
@@ -69,6 +71,10 @@ events:SetScript("OnEvent", function(self, event)
 
         db = type(JumpMaster6000DB) == "table" and JumpMaster6000DB or {}
         JumpMaster6000DB = db
+        if type(db.jumpDataVersion) ~= "number" or db.jumpDataVersion < jumpDataVersion then
+            db.jumps = {}
+            db.jumpDataVersion = jumpDataVersion
+        end
         db.jumps = type(db.jumps) == "table" and db.jumps or {}
         for guid, count in pairs(db.jumps) do
             if type(count) == "number" and count >= 0 and count < math.huge then
@@ -79,7 +85,6 @@ events:SetScript("OnEvent", function(self, event)
             end
         end
         sessionStarted = GetTime()
-        lastJump = sessionStarted
         refresh = addon.CreatePanel(db, ReadStats)
     end
 

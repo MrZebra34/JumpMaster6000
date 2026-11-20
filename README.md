@@ -2,9 +2,11 @@
 
 A compact jump tracker for **World of Warcraft: Forever** (interface 16001).
 
+**Upgrade to v0.3.1.** The first login or UI reload after updating clears your saved jump totals across every character on the account. Your panel position, visibility, and display mode carry over.
+
 - **Character jumps** and **Account jumps** accumulate from the time you enable the addon. The account total combines all characters tracked in the same Forever account's local WoW settings.
 - **Session jumps** and **Jumps per hour** start over at login or `/reload`. The hourly figure projects the session's average pace, including idle time.
-- **Time without a jump** starts at `00:00` or resets there when you jump. It switches to `HH:MM:SS` at one hour.
+- **Time without a jump** starts at `00:00` and resets when a jump is counted. It switches to `HH:MM:SS` at one hour.
 
 ## Install
 
@@ -18,8 +20,8 @@ Click **−** next to the close button for the borderless view, or **+** to rest
 
 The full panel expands inward from the minimal view's position. Place it in the bottom right to expand up and left. Minimizing returns it to its compact position.
 
-Version 0.3.0 uses the Shadow Priest artwork as the full-panel pilot on every character. The largest tile shows character jumps. Account and session jumps sit to its right, with pace and the timer along the bottom.
+The full panel uses the Shadow Priest artwork on every character during the pilot. The largest tile shows character jumps. Account and session jumps sit to its right, with pace and the timer along the bottom.
 
 Use the close button to hide the panel and `/jm6k` or `/jumpmaster6000` to bring it back. Tracking continues with the panel hidden. WoW saves your totals, panel position, and display mode on normal logout, exit, or UI reload.
 
-The addon watches the player's jump action and looks for takeoff. A fall that starts at nearly the same time as a jump press can be misclassified. The panel uses bundled Shadow Priest artwork and WoW's built-in fonts.
+The addon watches the player's jump action and looks for takeoff. Each counted jump must be at least 0.83 seconds after the previous one. A fall that starts at nearly the same time as a jump press can be misclassified. The panel uses bundled Shadow Priest artwork and WoW's built-in fonts.
