@@ -6,9 +6,11 @@ local characterJumps, accountJumps, sessionJumps = 0, 0, 0
 local sessionStarted, lastJump
 local wasAirborne, jumpRequested
 local recentJumps, lastSettledJump = {}, nil
+local burstWarnedAt
 local devBypass = false
 local takeoffWindow = 0.25
 local burstLimit, burstWindow, pauseDuration = 4, 1, 60
+local warningGrace, warningWindow = 3, 15
 local jumpDataVersion = 1
 
 local function ReadStats()
@@ -41,14 +43,27 @@ local function GetJumpCredit(now)
         db.jumpCreditPausedAt = nil
     end
 
+    -- A repeat burst must start after the grace period.
+    if burstWarnedAt and now < burstWarnedAt + warningGrace then
+        lastSettledJump = now
+        return 1
+    end
+
     while recentJumps[1] and now >= recentJumps[1] + burstWindow do
         lastSettledJump = table.remove(recentJumps, 1)
     end
 
     if #recentJumps == burstLimit - 1 then
-        -- The triggering jump is uncredited. Undo only the already counted jumps inside the window.
         local credit = -#recentJumps
         recentJumps = {}
+        if not burstWarnedAt or now >= burstWarnedAt + warningWindow then
+            burstWarnedAt, lastSettledJump = now, now
+            print("JumpMaster6000 saw a fast burst. Slow down to avoid a jump credit pause.")
+            return 1
+        end
+
+        -- The triggering jump is uncredited. Undo only the already counted jumps inside the window.
+        burstWarnedAt = nil
         db.jumpCreditPausedAt = GetServerTime()
         return credit
     end
@@ -77,6 +92,7 @@ end
 function addon.ToggleDevBypass()
     devBypass = not devBypass
     recentJumps, lastSettledJump = {}, lastJump
+    burstWarnedAt = nil
     print(devBypass and "JumpMaster6000 developer bypass enabled." or "JumpMaster6000 developer bypass disabled.")
 end
 
