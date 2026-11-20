@@ -2,6 +2,8 @@ local _, addon = ...
 
 local events = CreateFrame("Frame")
 local db, character, refresh
+local airtime, showAirtime
+local airtimeStarted, hideAirtimeAt
 local characterJumps, accountJumps, sessionJumps = 0, 0, 0
 local sessionStarted, lastJump
 local wasAirborne, groundedSince
@@ -12,6 +14,7 @@ local stableGroundTime, shortContactAirtime = 0.05, 0.20
 local creditCapacity, creditsPerSecond = 6, 1.5
 local credits, lastCreditUpdate = creditCapacity, nil
 local jumpDataVersion = 1
+local airtimeThreshold, airtimeHold = 1.5, 3
 
 local function ReadStats()
     local now = GetTime()
@@ -20,9 +23,47 @@ local function ReadStats()
     return characterJumps, accountJumps, sessionJumps, pace, math.floor(now - (lastJump or sessionStarted))
 end
 
-local function CanCountJump()
-    return not (IsSwimming() or IsFlying() or UnitOnTaxi("player")
-        or UnitInVehicle("player") or UnitIsDead("player"))
+local function CanTrackMovement(landing)
+    -- A fall can end in water or on a lethal impact.
+    return not (UnitOnTaxi("player") or IsFlying() or UnitInVehicle("player")
+        or (not landing and (IsSwimming() or UnitIsDead("player"))))
+end
+
+local function SavedDuration(seconds)
+    return type(seconds) == "number" and seconds >= 0 and seconds < math.huge and seconds or 0
+end
+
+local function ResetAirtime()
+    airtimeStarted, hideAirtimeAt = nil, nil
+    showAirtime()
+end
+
+local function TrackAirtime(now, airborne, tookOff, canTrack)
+    if not canTrack then
+        ResetAirtime()
+        return
+    end
+
+    if tookOff then
+        airtimeStarted = now
+    end
+    if airtimeStarted then
+        local duration = now - airtimeStarted
+        local longest = math.max(airtime.longest, duration)
+        local total = airtime.total + duration
+        if not airborne then
+            airtimeStarted = nil
+            airtime.longest, airtime.total = longest, total
+        end
+        if duration > airtimeThreshold then
+            hideAirtimeAt = not airborne and now + airtimeHold or nil
+            showAirtime(duration, longest, total)
+        end
+    end
+    if hideAirtimeAt and now >= hideAirtimeAt then
+        hideAirtimeAt = nil
+        showAirtime()
+    end
 end
 
 local function SpendJumpCredit(now)
@@ -55,21 +96,24 @@ function addon.ToggleDevBypass()
     print(devBypass and "JumpMaster6000 developer bypass enabled." or "JumpMaster6000 developer bypass disabled.")
 end
 
-local function CheckTakeoff()
+local function CheckMovement()
     local airborne = not not IsFalling()
     local tookOff = airborne and not wasAirborne
     local landed = wasAirborne and not airborne
     wasAirborne = airborne
-    if not landed and not pendingTakeoff and not jumpRequested then
+    if not (landed or tookOff or pendingTakeoff or jumpRequested or airtimeStarted or hideAirtimeAt) then
         return
     end
 
     local now = GetTime()
+    local canTrack = CanTrackMovement(landed)
+    TrackAirtime(now, airborne, tookOff, canTrack)
+
     if landed then
         groundedSince = now
     end
     if pendingTakeoff then
-        if not airborne or not CanCountJump() then
+        if not airborne or not canTrack then
             pendingTakeoff = nil
         elseif now >= pendingTakeoff + shortContactAirtime then
             local takeoffTime = pendingTakeoff
@@ -88,7 +132,7 @@ local function CheckTakeoff()
     jumpRequested = nil
 
     -- shortcut: a simultaneous ledge fall can resemble takeoff. Use a native jump event if one becomes available.
-    if withinWindow and tookOff and CanCountJump() then
+    if withinWindow and tookOff and canTrack then
         if not devBypass and groundedSince and now < groundedSince + stableGroundTime then
             -- A short landing can be real. Wait for the airborne flag to stay true.
             pendingTakeoff = now
@@ -100,7 +144,7 @@ end
 
 hooksecurefunc("JumpOrAscendStart", function()
     -- Use the previous frame's state because the original action may have started takeoff already.
-    if wasAirborne == false and CanCountJump() then
+    if wasAirborne == false and CanTrackMovement() then
         jumpRequested = jumpRequested or GetTime()
     end
 end)
@@ -111,6 +155,9 @@ events:SetScript("OnEvent", function(self, event)
     if event == "PLAYER_LEAVING_WORLD" then
         wasAirborne, groundedSince = nil, nil
         jumpRequested, pendingTakeoff = nil, nil
+        if showAirtime then
+            ResetAirtime()
+        end
         self:SetScript("OnUpdate", nil)
         return
     end
@@ -137,10 +184,16 @@ events:SetScript("OnEvent", function(self, event)
                 end
             end
         end
+        db.airtime = type(db.airtime) == "table" and db.airtime or {}
+        airtime = type(db.airtime[character]) == "table" and db.airtime[character] or {}
+        airtime.longest = SavedDuration(airtime.longest)
+        airtime.total = SavedDuration(airtime.total)
+        db.airtime[character] = airtime
         sessionStarted = GetTime()
         refresh = addon.CreatePanel(db, ReadStats)
+        showAirtime = addon.CreateAirtimeBar()
     end
 
     wasAirborne, groundedSince = not not IsFalling(), nil
-    self:SetScript("OnUpdate", CheckTakeoff)
+    self:SetScript("OnUpdate", CheckMovement)
 end)

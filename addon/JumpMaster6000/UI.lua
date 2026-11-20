@@ -40,6 +40,72 @@ local function FitText(field, text, maxWidth)
     end
 end
 
+local function FormatAirtime(seconds)
+    if seconds >= 60 then
+        return FormatDuration(math.floor(seconds))
+    end
+    return ("%.2f s"):format(seconds)
+end
+
+function addon.CreateAirtimeBar()
+    local bar = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    bar:Hide()
+    bar:SetPoint("CENTER", UIParent, "CENTER")
+    bar:SetSize(284, 78)
+    bar:SetFrameStrata("HIGH")
+    bar:SetBackdrop({
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeSize = 14,
+    })
+    bar:SetBackdropBorderColor(0.67, 0.43, 0.81)
+
+    local backdrop = bar:CreateTexture(nil, "BACKGROUND")
+    backdrop:SetPoint("TOPLEFT", 5, -5)
+    backdrop:SetPoint("BOTTOMRIGHT", -5, 5)
+    backdrop:SetColorTexture(1, 1, 1)
+    backdrop:SetGradient("VERTICAL", CreateColor(0.06, 0.03, 0.10, 0.97), CreateColor(0.23, 0.10, 0.35, 0.97))
+
+    local crest = bar:CreateTexture(nil, "ARTWORK")
+    crest:SetPoint("TOPLEFT", 13, -10)
+    crest:SetSize(26, 26)
+    crest:SetTexture("Interface\\Icons\\Spell_Shadow_Shadowform")
+
+    local rule = bar:CreateTexture(nil, "ARTWORK")
+    rule:SetPoint("CENTER", 0, -2)
+    rule:SetSize(256, 1)
+    rule:SetColorTexture(0.82, 0.59, 0.31, 0.6)
+
+    local function Readout(point, x, y, size, r, g, b, label)
+        local field = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        field:SetPoint(point, bar, "CENTER", x, y)
+        field:SetFontHeight(size)
+        field:SetTextColor(r, g, b)
+        if label then
+            field:SetText(label)
+        end
+        return field
+    end
+
+    Readout("LEFT", -94, 16, 13, 0.99, 0.85, 0.59, "Air Time")
+    local timer = Readout("RIGHT", 124, 16, 24, 0.90, 0.76, 1)
+    Readout("CENTER", -67, -13, 10, 0.85, 0.75, 0.91, "Longest Air Time")
+    Readout("CENTER", 67, -13, 10, 0.85, 0.75, 0.91, "Total Air Time")
+    local longest = Readout("CENTER", -67, -26, 13, 0.98, 0.94, 0.86)
+    local total = Readout("CENTER", 67, -26, 13, 0.98, 0.94, 0.86)
+
+    return function(duration, longestDuration, totalDuration)
+        if not duration then
+            bar:Hide()
+            return
+        end
+
+        FitText(timer, FormatAirtime(duration), 126)
+        FitText(longest, FormatAirtime(longestDuration), 116)
+        FitText(total, FormatAirtime(totalDuration), 116)
+        bar:Show()
+    end
+end
+
 function addon.CreatePanel(db, readStats)
     local panel = CreateFrame("Frame", nil, UIParent)
     panel:Hide()

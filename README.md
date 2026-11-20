@@ -30,4 +30,6 @@ A takeoff after less than 50 ms of sampled ground contact can still count once W
 
 Use `/jm6k dev` to bypass the credit budget and short-contact check for testing. It starts off each time the addon loads.
 
+A centered Shadow Priest bar appears after more than 1.5 seconds in the air. It shows the full elapsed time from takeoff and holds the final reading for three seconds after landing. Longest Air Time and Total Air Time are saved per character and include short hops and falls. Flight paths, active flying, and vehicle travel are excluded.
+
 A fall that starts at nearly the same time as a jump press can be misclassified. The panel uses bundled Shadow Priest artwork and WoW's built-in fonts.
