@@ -1,0 +1,8 @@
+## Interface: 16001
+## Title: JumpMaster6000
+## Notes: Tracks your jumps and your account's total in World of Warcraft: Forever.
+## Version: 0.3.0
+## SavedVariables: JumpMaster6000DB
+
+UI.lua
+Core.lua
