@@ -6,8 +6,9 @@ local characterJumps, accountJumps, sessionJumps = 0, 0, 0
 local sessionStarted, lastJump
 local wasAirborne, jumpRequested
 local recentJumps, lastSettledJump = {}, nil
+local devBypass = false
 local takeoffWindow = 0.25
-local burstLimit, burstWindow, pauseDuration = 4, 1, 300
+local burstLimit, burstWindow, pauseDuration = 4, 1, 60
 local jumpDataVersion = 1
 
 local function ReadStats()
@@ -23,7 +24,7 @@ local function CanCountJump()
 end
 
 local function AnnouncePause()
-    print("JumpMaster6000 removed a burst of jumps and paused jump credit for 5 minutes.")
+    print("JumpMaster6000 removed a burst of jumps and paused jump credit for 1 minute.")
     local media = LibStub and LibStub("LibSharedMedia-3.0", true)
     local sound = media and media:Fetch("sound", "Big Yankie Devil", true)
     sound = sound or [[Interface\AddOns\ElvUI\Game\Shared\Media\Sounds\YankieBangBang.ogg]]
@@ -32,29 +33,36 @@ local function AnnouncePause()
     end
 end
 
-local function RecordTakeoff(now)
-    if db.jumpCreditPausedUntil then
-        if GetServerTime() < db.jumpCreditPausedUntil then
-            return
+local function GetJumpCredit(now)
+    if db.jumpCreditPausedAt then
+        if GetServerTime() < db.jumpCreditPausedAt + pauseDuration then
+            return 0
         end
-        db.jumpCreditPausedUntil = nil
+        db.jumpCreditPausedAt = nil
     end
 
     while recentJumps[1] and now >= recentJumps[1] + burstWindow do
         lastSettledJump = table.remove(recentJumps, 1)
     end
 
-    local credit = 1
     if #recentJumps == burstLimit - 1 then
         -- The triggering jump is uncredited. Undo only the already counted jumps inside the window.
-        credit = -#recentJumps
+        local credit = -#recentJumps
         recentJumps = {}
-        lastJump = lastSettledJump
-        db.jumpCreditPausedUntil = GetServerTime() + pauseDuration
-    else
-        recentJumps[#recentJumps + 1] = now
-        lastJump = now
+        db.jumpCreditPausedAt = GetServerTime()
+        return credit
     end
+
+    recentJumps[#recentJumps + 1] = now
+    return 1
+end
+
+local function RecordTakeoff(now)
+    local credit = devBypass and 1 or GetJumpCredit(now)
+    if credit == 0 then
+        return
+    end
+    lastJump = credit > 0 and now or lastSettledJump
     characterJumps = characterJumps + credit
     accountJumps = accountJumps + credit
     sessionJumps = sessionJumps + credit
@@ -64,6 +72,12 @@ local function RecordTakeoff(now)
     if credit < 0 then
         AnnouncePause()
     end
+end
+
+function addon.ToggleDevBypass()
+    devBypass = not devBypass
+    recentJumps, lastSettledJump = {}, lastJump
+    print(devBypass and "JumpMaster6000 developer bypass enabled." or "JumpMaster6000 developer bypass disabled.")
 end
 
 local function CheckTakeoff()
@@ -116,7 +130,10 @@ events:SetScript("OnEvent", function(self, event)
             db.jumpDataVersion = jumpDataVersion
         end
         db.jumps = type(db.jumps) == "table" and db.jumps or {}
-        db.jumpCreditPausedUntil = tonumber(db.jumpCreditPausedUntil)
+        -- v0.3.2 saved the expiry of a 300-second pause.
+        local oldPauseEnd = tonumber(db.jumpCreditPausedUntil)
+        db.jumpCreditPausedAt = tonumber(db.jumpCreditPausedAt) or (oldPauseEnd and oldPauseEnd - 300)
+        db.jumpCreditPausedUntil = nil
         for guid, count in pairs(db.jumps) do
             if type(count) == "number" and count >= 0 and count < math.huge then
                 accountJumps = accountJumps + count
