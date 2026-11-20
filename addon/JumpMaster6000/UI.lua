@@ -48,60 +48,72 @@ local function FormatAirtime(seconds)
 end
 
 function addon.CreateAirtimeBar()
-    local bar = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    local bar = CreateFrame("Frame", nil, UIParent)
     bar:Hide()
     bar:SetPoint("CENTER", UIParent, "CENTER")
-    bar:SetSize(284, 78)
+    bar:SetSize(298, 58)
     bar:SetFrameStrata("HIGH")
-    bar:SetBackdrop({
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        edgeSize = 14,
-    })
-    bar:SetBackdropBorderColor(0.67, 0.43, 0.81)
 
-    local backdrop = bar:CreateTexture(nil, "BACKGROUND")
-    backdrop:SetPoint("TOPLEFT", 5, -5)
-    backdrop:SetPoint("BOTTOMRIGHT", -5, 5)
-    backdrop:SetColorTexture(1, 1, 1)
-    backdrop:SetGradient("VERTICAL", CreateColor(0.06, 0.03, 0.10, 0.97), CreateColor(0.23, 0.10, 0.35, 0.97))
+    local ornament = "Interface\\AddOns\\" .. addonName .. "\\Media\\AirtimeOrnament.tga"
+    local trackWidth, trackHeight = 264, 34
+    local track = bar:CreateTexture(nil, "ARTWORK", nil, 0)
+    track:SetTexture(ornament)
+    track:SetPoint("CENTER", 0, -18)
+    track:SetSize(trackWidth, trackHeight)
+    track:SetVertexColor(0.65, 0.54, 0.74, 0.65)
 
-    local crest = bar:CreateTexture(nil, "ARTWORK")
-    crest:SetPoint("TOPLEFT", 13, -10)
-    crest:SetSize(26, 26)
-    crest:SetTexture("Interface\\Icons\\Spell_Shadow_Shadowform")
+    local fill = bar:CreateTexture(nil, "ARTWORK", nil, 1)
+    fill:SetTexture(ornament)
+    fill:SetPoint("LEFT", track, "LEFT")
+    fill:SetHeight(trackHeight)
+    fill:SetVertexColor(1, 0.84, 1)
 
-    local rule = bar:CreateTexture(nil, "ARTWORK")
-    rule:SetPoint("CENTER", 0, -2)
-    rule:SetSize(256, 1)
-    rule:SetColorTexture(0.82, 0.59, 0.31, 0.6)
+    local tip = bar:CreateTexture(nil, "ARTWORK", nil, 2)
+    tip:SetTexture(ornament)
+    -- Sample the center diamond to highlight the moving end of the fill.
+    tip:SetTexCoord(0.47, 0.53, 0.37, 0.63)
+    tip:SetSize(7, 8)
+    tip:SetVertexColor(1, 0.77, 1)
+    tip:SetBlendMode("ADD")
 
-    local function Readout(point, x, y, size, r, g, b, label)
+    local function Readout(x, y, size, r, g, b, label)
         local field = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        field:SetPoint(point, bar, "CENTER", x, y)
+        field:SetPoint("CENTER", bar, "CENTER", x, y)
         field:SetFontHeight(size)
         field:SetTextColor(r, g, b)
+        field:SetShadowColor(0.025, 0.012, 0.04, 0.92)
+        field:SetShadowOffset(1, -1)
         if label then
             field:SetText(label)
         end
         return field
     end
 
-    Readout("LEFT", -94, 16, 13, 0.99, 0.85, 0.59, "Air Time")
-    local timer = Readout("RIGHT", 124, 16, 24, 0.90, 0.76, 1)
-    Readout("CENTER", -67, -13, 10, 0.85, 0.75, 0.91, "Longest Air Time")
-    Readout("CENTER", 67, -13, 10, 0.85, 0.75, 0.91, "Total Air Time")
-    local longest = Readout("CENTER", -67, -26, 13, 0.98, 0.94, 0.86)
-    local total = Readout("CENTER", 67, -26, 13, 0.98, 0.94, 0.86)
+    Readout(0, 24, 11, 0.99, 0.85, 0.68, "Air Time")
+    local timer = Readout(0, 6, 24, 0.93, 0.81, 1)
+    Readout(-99, 16, 11, 0.88, 0.79, 0.93, "Longest Air Time")
+    Readout(99, 16, 11, 0.88, 0.79, 0.93, "Total Air Time")
+    local longest = Readout(-99, 1, 14, 0.98, 0.94, 0.91)
+    local total = Readout(99, 1, 14, 0.98, 0.94, 0.91)
 
-    return function(duration, longestDuration, totalDuration)
+    return function(duration, longestDuration, totalDuration, progress)
         if not duration then
             bar:Hide()
             return
         end
 
-        FitText(timer, FormatAirtime(duration), 126)
-        FitText(longest, FormatAirtime(longestDuration), 116)
-        FitText(total, FormatAirtime(totalDuration), 116)
+        FitText(timer, FormatAirtime(duration), 100)
+        FitText(longest, FormatAirtime(longestDuration), 94)
+        FitText(total, FormatAirtime(totalDuration), 94)
+
+        local filledWidth = trackWidth * progress
+        if progress > 0 then
+            fill:SetWidth(filledWidth)
+            fill:SetTexCoord(0, progress, 0, 1)
+            tip:SetPoint("CENTER", track, "LEFT", filledWidth, 0)
+        end
+        fill:SetShown(progress > 0)
+        tip:SetShown(progress > 0 and progress < 1)
         bar:Show()
     end
 end
