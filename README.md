@@ -2,7 +2,7 @@
 
 A compact jump tracker for **World of Warcraft: Forever** (interface 16001).
 
-**Upgrade to v0.3.1.** The first login or UI reload after updating clears your saved jump totals across every character on the account. Your panel position, visibility, and display mode carry over.
+**Upgrading from v0.3.0 or earlier.** The first login or UI reload after updating clears your saved jump totals across every character once. Your panel position, visibility, and display mode carry over.
 
 - **Character jumps** and **Account jumps** accumulate from the time you enable the addon. The account total combines all characters tracked in the same Forever account's local WoW settings.
 - **Session jumps** and **Jumps per hour** start over at login or `/reload`. The hourly figure projects the session's average pace, including idle time.
@@ -24,4 +24,6 @@ The full panel uses the Shadow Priest artwork on every character during the pilo
 
 Use the close button to hide the panel and `/jm6k` or `/jumpmaster6000` to bring it back. Tracking continues with the panel hidden. WoW saves your totals, panel position, and display mode on normal logout, exit, or UI reload.
 
-The addon watches the player's jump action and looks for takeoff. Each counted jump must be at least 0.83 seconds after the previous one. A fall that starts at nearly the same time as a jump press can be misclassified. The panel uses bundled Shadow Priest artwork and WoW's built-in fonts.
+The addon watches the player's jump action and looks for takeoff. Four detected takeoffs in less than one second void that burst in the character, session, and account counters and pause jump credit for five minutes across the account. The pause survives reloads and character switches. The alert uses ElvUI's “Big Yankie Devil” when available and a built-in sound otherwise.
+
+A fall that starts at nearly the same time as a jump press can be misclassified. The panel uses bundled Shadow Priest artwork and WoW's built-in fonts.
