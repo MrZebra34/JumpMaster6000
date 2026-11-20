@@ -290,11 +290,7 @@ function addon.CreatePanel(db, readStats)
 
     SLASH_JUMPMASTER60001 = "/jumpmaster6000"
     SLASH_JUMPMASTER60002 = "/jm6k"
-    SlashCmdList.JUMPMASTER6000 = function(message)
-        if (message or ""):lower():match("^%s*dev%s*$") then
-            addon.ToggleDevBypass()
-            return
-        end
+    SlashCmdList.JUMPMASTER6000 = function()
         db.hidden = panel:IsShown()
         panel:SetShown(not db.hidden)
     end

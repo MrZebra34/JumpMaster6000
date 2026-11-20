@@ -8,8 +8,7 @@ local airtimeHeight, airtimeDescending, airJumpRequested
 local characterJumps, accountJumps, sessionJumps = 0, 0, 0
 local sessionStarted, lastJump
 local wasAirborne, groundedSince
-local jumpRequested, pendingTakeoff
-local devBypass = false
+local jumpRequested, jumpFromSurface, pendingTakeoff
 local takeoffWindow = 0.25
 local stableGroundTime, shortContactAirtime = 0.05, 0.20
 local creditCapacity, creditsPerSecond = 6, 1.5
@@ -25,9 +24,9 @@ local function ReadStats()
 end
 
 local function CanTrackMovement(landing)
-    -- A fall can end in water or on a lethal impact.
+    -- A fall can end on a lethal impact.
     return not (UnitOnTaxi("player") or IsFlying() or UnitInVehicle("player")
-        or (not landing and (IsSwimming() or UnitIsDead("player"))))
+        or (not landing and UnitIsDead("player")))
 end
 
 local function SavedDuration(seconds)
@@ -114,7 +113,7 @@ local function SpendJumpCredit(now)
 end
 
 local function RecordTakeoff(now)
-    if not devBypass and not SpendJumpCredit(now) then
+    if not SpendJumpCredit(now) then
         return
     end
     lastJump = now
@@ -123,12 +122,6 @@ local function RecordTakeoff(now)
     sessionJumps = sessionJumps + 1
     db.jumps[character] = characterJumps
     refresh()
-end
-
-function addon.ToggleDevBypass()
-    devBypass = not devBypass
-    pendingTakeoff = nil
-    print(devBypass and "JumpMaster6000 developer bypass enabled." or "JumpMaster6000 developer bypass disabled.")
 end
 
 local function CheckMovement()
@@ -141,8 +134,16 @@ local function CheckMovement()
     end
 
     local now = GetTime()
-    local canTrack = CanTrackMovement(landed)
-    TrackAirtime(now, airborne, tookOff, canTrack)
+    local swimming = IsSwimming()
+    local movementAllowed = CanTrackMovement(landed)
+    local canTrack = movementAllowed and (landed or not swimming)
+    if jumpFromSurface and (not movementAllowed or IsSubmerged()) then
+        jumpRequested, jumpFromSurface = nil, nil
+    end
+    local withinWindow = jumpRequested and now - jumpRequested <= takeoffWindow
+    -- Swimming and falling can overlap briefly as a jump clears the surface.
+    local surfaceTakeoff = jumpFromSurface and withinWindow and airborne and canTrack
+    TrackAirtime(now, airborne, tookOff or surfaceTakeoff, canTrack)
 
     if landed then
         groundedSince = now
@@ -160,15 +161,14 @@ local function CheckMovement()
     if not jumpRequested then
         return
     end
-    local withinWindow = now - jumpRequested <= takeoffWindow
-    if not airborne and withinWindow then
+    if withinWindow and (not airborne or (jumpFromSurface and swimming)) then
         return
     end
-    jumpRequested = nil
+    jumpRequested, jumpFromSurface = nil, nil
 
     -- shortcut: a simultaneous ledge fall can resemble takeoff. Use a native jump event if one becomes available.
-    if withinWindow and tookOff and canTrack then
-        if not devBypass and groundedSince and now < groundedSince + stableGroundTime then
+    if withinWindow and (tookOff or surfaceTakeoff) and canTrack then
+        if groundedSince and now < groundedSince + stableGroundTime then
             -- A short landing can be real. Wait for the airborne flag to stay true.
             pendingTakeoff = now
         else
@@ -186,8 +186,11 @@ hooksecurefunc("JumpOrAscendStart", function()
         end
     end
     -- Use the previous frame's state because the original action may have started takeoff already.
-    if wasAirborne == false and CanTrackMovement() then
-        jumpRequested = jumpRequested or GetTime()
+    if wasAirborne ~= nil and not jumpRequested then
+        local swimming = IsSwimming()
+        if (not wasAirborne or (swimming and not airtimeStarted)) and CanTrackMovement() and not IsSubmerged() then
+            jumpRequested, jumpFromSurface = GetTime(), swimming
+        end
     end
 end)
 
@@ -196,7 +199,7 @@ events:RegisterEvent("PLAYER_LEAVING_WORLD")
 events:SetScript("OnEvent", function(self, event)
     if event == "PLAYER_LEAVING_WORLD" then
         wasAirborne, groundedSince = nil, nil
-        jumpRequested, pendingTakeoff = nil, nil
+        jumpRequested, jumpFromSurface, pendingTakeoff = nil, nil, nil
         if showAirtime then
             ResetAirtime()
         end

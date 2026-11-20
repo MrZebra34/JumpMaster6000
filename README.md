@@ -28,7 +28,7 @@ The addon watches the player's jump action and looks for takeoff. There are six 
 
 A takeoff after less than 50 ms of sampled ground contact can still count once WoW reports 200 ms of continuous airtime. This helps filter brief movement flickers on slopes while allowing quick re-jumps.
 
-Use `/jm6k dev` to bypass the credit budget and short-contact check for testing. It starts off each time the addon loads.
+Jumps from the water's surface can earn credit once Forever reports a takeoff clear of the water. The airtime timer starts with that confirmed exit.
 
 A transparent Shadow Priest overlay appears after more than 1.5 seconds of uninterrupted airtime. The timer sits between Longest Air Time and Total Air Time. The diamond ornament fills toward your previous airtime record and stays full if you pass it. The final reading holds for up to three seconds after landing. A new takeoff clears it and starts its own timer. Longest and total are saved per character and include short hops and falls. Flight paths, active flying, and vehicle travel are excluded.
 
