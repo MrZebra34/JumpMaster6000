@@ -6,9 +6,11 @@ local characterJumps, accountJumps, sessionJumps = 0, 0, 0
 local sessionStarted, lastJump
 local wasAirborne, jumpRequested
 local recentJumps, lastSettledJump = {}, nil
+local lastAcceptedTakeoff
 local devBypass = false
 local takeoffWindow = 0.25
-local burstLimit, burstWindow, pauseDuration = 4, 1, 60
+local minimumTakeoffSpacing = 0.25
+local burstLimit, burstWindow, pauseDuration = 8, 3, 60
 local jumpDataVersion = 1
 
 local function ReadStats()
@@ -58,9 +60,16 @@ local function GetJumpCredit(now)
 end
 
 local function RecordTakeoff(now)
+    if lastAcceptedTakeoff and now - lastAcceptedTakeoff < minimumTakeoffSpacing then
+        return
+    end
+
     local credit = devBypass and 1 or GetJumpCredit(now)
     if credit == 0 then
         return
+    end
+    if credit > 0 then
+        lastAcceptedTakeoff = now
     end
     lastJump = credit > 0 and now or lastSettledJump
     characterJumps = characterJumps + credit
@@ -77,6 +86,7 @@ end
 function addon.ToggleDevBypass()
     devBypass = not devBypass
     recentJumps, lastSettledJump = {}, lastJump
+    lastAcceptedTakeoff = nil
     print(devBypass and "JumpMaster6000 developer bypass enabled." or "JumpMaster6000 developer bypass disabled.")
 end
 
@@ -113,6 +123,7 @@ events:RegisterEvent("PLAYER_LEAVING_WORLD")
 events:SetScript("OnEvent", function(self, event)
     if event == "PLAYER_LEAVING_WORLD" then
         wasAirborne, jumpRequested = nil, nil
+        lastAcceptedTakeoff = nil
         self:SetScript("OnUpdate", nil)
         return
     end
