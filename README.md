@@ -24,8 +24,10 @@ The full panel uses the Shadow Priest artwork on every character during the pilo
 
 Use the close button to hide the panel and `/jm6k` or `/jumpmaster6000` to bring it back. Tracking continues with the panel hidden. WoW saves your totals, panel position, and display mode on normal logout, exit, or UI reload.
 
-The addon watches the player's jump action and looks for takeoff. During normal counting, takeoffs less than 250 milliseconds after the last credited takeoff are treated as duplicates. Eight eligible takeoffs in less than three seconds give a chat warning and three seconds of grace. The first burst and eligible jumps during grace keep their credit. A fresh burst after grace and within 15 seconds of the warning loses its credit and triggers a one-minute account-wide pause. The pause survives reloads and character switches. The alert uses ElvUI's “Big Yankie Devil” when available and a built-in sound otherwise.
+The addon watches the player's jump action and looks for takeoff. There are six jump credits available, which refill at 1.5 per second. If the budget runs out, excess takeoffs are skipped. Counting resumes as credit refills.
 
-Use `/jm6k dev` to toggle the jump credit bypass for testing. It starts off each time the addon loads. An active pause resumes if you turn the bypass off before it expires.
+A takeoff after less than 50 ms of sampled ground contact can still count once WoW reports 200 ms of continuous airtime. This helps filter brief movement flickers on slopes while allowing quick re-jumps.
+
+Use `/jm6k dev` to bypass the credit budget and short-contact check for testing. It starts off each time the addon loads.
 
 A fall that starts at nearly the same time as a jump press can be misclassified. The panel uses bundled Shadow Priest artwork and WoW's built-in fonts.
