@@ -2,6 +2,10 @@
 
 A compact jump tracker for **World of Warcraft: Forever** (interface 16001).
 
+**Work in progress**
+
+JumpMaster6000 is under ~~active~~… some sort of development. The full display currently uses a **Shadow Priest mock-up theme**, which will be redesigned as more class, specialization and other themes are developed. A minimal text-only view is also available.
+
 **Upgrading from v0.3.0 or earlier.** The first login or UI reload after updating clears your saved jump totals across every character once. Your panel position, visibility, and display mode carry over.
 
 - **Character jumps** and **Account jumps** accumulate from the time you enable the addon. The account total combines all characters tracked in the same Forever account's local WoW settings.
