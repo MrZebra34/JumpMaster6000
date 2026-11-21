@@ -7,9 +7,10 @@ local airtimeStarted, hideAirtimeAt
 local airtimeHeight, airtimeDescending, airJumpRequested
 local characterJumps, accountJumps, sessionJumps = 0, 0, 0
 local sessionStarted, lastJump
-local wasAirborne, groundedSince
-local jumpRequested, jumpFromSurface, pendingTakeoff
-local takeoffWindow = 0.25
+local wasAirborne, wasWet, groundedSince
+local jumpRequested, pendingTakeoff
+local jumpHeld, jumpInputAt, waterJumpAt, waterContactAt
+local takeoffWindow, surfaceExitWindow = 0.25, 0.30
 local stableGroundTime, shortContactAirtime = 0.05, 0.20
 local creditCapacity, creditsPerSecond = 6, 1.5
 local credits, lastCreditUpdate = creditCapacity, nil
@@ -27,6 +28,10 @@ local function CanTrackMovement(landing)
     -- A fall can end on a lethal impact.
     return not (UnitOnTaxi("player") or IsFlying() or UnitInVehicle("player")
         or (not landing and UnitIsDead("player")))
+end
+
+local function IsWet()
+    return IsSwimming() or IsSubmerged()
 end
 
 local function SavedDuration(seconds)
@@ -124,30 +129,51 @@ local function RecordTakeoff(now)
     refresh()
 end
 
+local function TrackWater(now, wet, airborne, movementAllowed)
+    if not movementAllowed or (waterJumpAt and now - waterJumpAt > surfaceExitWindow) then
+        waterJumpAt = nil
+    end
+
+    if wet then
+        waterContactAt = now
+        jumpRequested, pendingTakeoff = nil, nil
+        if movementAllowed then
+            if jumpHeld then
+                waterJumpAt = now
+            elseif not waterJumpAt and jumpInputAt and now - jumpInputAt <= surfaceExitWindow then
+                waterJumpAt = jumpInputAt
+            end
+        end
+    elseif airborne and waterJumpAt then
+        waterJumpAt, jumpInputAt = nil, nil
+        RecordTakeoff(now)
+    elseif not airborne and not waterJumpAt and waterContactAt
+        and now >= math.max(waterContactAt, groundedSince or 0) + stableGroundTime then
+        -- A dry falling sample can be another water hop. Re-arm Air Time on dry ground.
+        waterContactAt = nil
+    end
+end
+
 local function CheckMovement()
     local airborne = not not IsFalling()
     local tookOff = airborne and not wasAirborne
     local landed = wasAirborne and not airborne
-    wasAirborne = airborne
-    if not (landed or tookOff or pendingTakeoff or jumpRequested or airtimeStarted or hideAirtimeAt) then
+    local wet = IsWet()
+    local leftWaterOnGround = wasWet and not wet and not airborne
+    wasAirborne, wasWet = airborne, wet
+    if not (wet or waterContactAt or landed or tookOff or pendingTakeoff or jumpRequested or airtimeStarted or hideAirtimeAt) then
         return
     end
 
     local now = GetTime()
-    local swimming = IsSwimming()
     local movementAllowed = CanTrackMovement(landed)
-    local canTrack = movementAllowed and (landed or not swimming)
-    if jumpFromSurface and (not movementAllowed or IsSubmerged()) then
-        jumpRequested, jumpFromSurface = nil, nil
-    end
-    local withinWindow = jumpRequested and now - jumpRequested <= takeoffWindow
-    -- Swimming and falling can overlap briefly as a jump clears the surface.
-    local surfaceTakeoff = jumpFromSurface and withinWindow and airborne and canTrack
-    TrackAirtime(now, airborne, tookOff or surfaceTakeoff, canTrack)
-
-    if landed then
+    if landed or leftWaterOnGround then
         groundedSince = now
     end
+    TrackWater(now, wet, airborne, movementAllowed)
+    TrackAirtime(now, airborne, tookOff, movementAllowed and not waterContactAt)
+
+    local canTrack = movementAllowed and not wet
     if pendingTakeoff then
         if not airborne or not canTrack then
             pendingTakeoff = nil
@@ -161,13 +187,15 @@ local function CheckMovement()
     if not jumpRequested then
         return
     end
-    if withinWindow and (not airborne or (jumpFromSurface and swimming)) then
+    local withinWindow = now - jumpRequested <= takeoffWindow
+    if not airborne and withinWindow then
         return
     end
-    jumpRequested, jumpFromSurface = nil, nil
+    jumpRequested = nil
 
     -- shortcut: a simultaneous ledge fall can resemble takeoff. Use a native jump event if one becomes available.
-    if withinWindow and (tookOff or surfaceTakeoff) and canTrack then
+    if withinWindow and tookOff and canTrack then
+        jumpInputAt = nil
         if groundedSince and now < groundedSince + stableGroundTime then
             -- A short landing can be real. Wait for the airborne flag to stay true.
             pendingTakeoff = now
@@ -178,28 +206,41 @@ local function CheckMovement()
 end
 
 hooksecurefunc("JumpOrAscendStart", function()
+    -- The native action may have left the water before this post-hook runs.
+    local fromWater = wasWet or IsWet()
+    local now = GetTime()
+    if wasAirborne ~= nil and fromWater then
+        waterContactAt = now
+    end
     if wasAirborne then
         if not IsFalling() then
             CheckMovement()
         elseif airtimeStarted then
-            airJumpRequested = GetTime()
+            airJumpRequested = now
         end
     end
-    -- Use the previous frame's state because the original action may have started takeoff already.
-    if wasAirborne ~= nil and not jumpRequested then
-        local swimming = IsSwimming()
-        if (not wasAirborne or (swimming and not airtimeStarted)) and CanTrackMovement() and not IsSubmerged() then
-            jumpRequested, jumpFromSurface = GetTime(), swimming
+    if wasAirborne ~= nil and CanTrackMovement() then
+        jumpHeld, jumpInputAt = true, now
+        if fromWater then
+            waterJumpAt, jumpRequested, pendingTakeoff = now, nil, nil
+        elseif not wasAirborne then
+            waterJumpAt = nil
+            jumpRequested = jumpRequested or now
         end
     end
+end)
+
+hooksecurefunc("AscendStop", function()
+    jumpHeld = nil
 end)
 
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:RegisterEvent("PLAYER_LEAVING_WORLD")
 events:SetScript("OnEvent", function(self, event)
     if event == "PLAYER_LEAVING_WORLD" then
-        wasAirborne, groundedSince = nil, nil
-        jumpRequested, jumpFromSurface, pendingTakeoff = nil, nil, nil
+        wasAirborne, wasWet, groundedSince = nil, nil, nil
+        jumpRequested, pendingTakeoff = nil, nil
+        jumpHeld, jumpInputAt, waterJumpAt, waterContactAt = nil, nil, nil, nil
         if showAirtime then
             ResetAirtime()
         end
@@ -239,6 +280,6 @@ events:SetScript("OnEvent", function(self, event)
         showAirtime = addon.CreateAirtimeBar()
     end
 
-    wasAirborne, groundedSince = not not IsFalling(), nil
+    wasAirborne, wasWet, groundedSince = not not IsFalling(), IsWet(), nil
     self:SetScript("OnUpdate", CheckMovement)
 end)
