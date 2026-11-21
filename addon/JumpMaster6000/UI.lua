@@ -47,12 +47,19 @@ local function FormatAirtime(seconds)
     return ("%.2f s"):format(seconds)
 end
 
-function addon.CreateAirtimeBar()
+function addon.CreateAirtimeBar(db, stats)
     local bar = CreateFrame("Frame", nil, UIParent)
     bar:Hide()
-    bar:SetPoint("CENTER", UIParent, "CENTER")
     bar:SetSize(298, 58)
     bar:SetFrameStrata("HIGH")
+    bar:SetClampedToScreen(true)
+    bar:SetMovable(true)
+
+    local function AnchorBar()
+        bar:ClearAllPoints()
+        bar:SetPoint("CENTER", UIParent, "CENTER", db.airtimeX or 0, db.airtimeY or 0)
+    end
+    AnchorBar()
 
     local ornament = "Interface\\AddOns\\" .. addonName .. "\\Media\\AirtimeOrnament.tga"
     local trackWidth, trackHeight = 264, 34
@@ -96,7 +103,7 @@ function addon.CreateAirtimeBar()
     local longest = Readout(-99, 1, 14, 0.98, 0.94, 0.91)
     local total = Readout(99, 1, 14, 0.98, 0.94, 0.91)
 
-    return function(duration, longestDuration, totalDuration, progress)
+    local function Render(duration, longestDuration, totalDuration, progress)
         if not duration then
             bar:Hide()
             return
@@ -116,9 +123,61 @@ function addon.CreateAirtimeBar()
         tip:SetShown(progress > 0 and progress < 1)
         bar:Show()
     end
+
+    local selection, editing, dragging
+    local liveDuration, liveLongest, liveTotal, liveProgress
+    local function FinishDrag()
+        if dragging then
+            dragging = false
+            bar:StopMovingOrSizing()
+            local x, y = bar:GetCenter()
+            local centerX, centerY = UIParent:GetCenter()
+            db.airtimeX, db.airtimeY = x - centerX, y - centerY
+            bar:SetUserPlaced(false)
+            AnchorBar()
+        end
+    end
+
+    EventRegistry:RegisterCallback("EditMode.Enter", function()
+        if not selection then
+            selection = CreateFrame("Frame", nil, bar, "EditModeSystemSelectionTemplate")
+            selection.system = {GetSystemName = function() return "Air Time" end}
+            selection:SetAllPoints()
+            selection:SetFrameStrata("HIGH")
+            selection:SetScript("OnMouseDown", nil)
+            selection:SetScript("OnEnter", nil)
+            selection:SetScript("OnLeave", nil)
+            selection:SetScript("OnDragStart", function()
+                if not InCombatLockdown() then
+                    dragging = true
+                    bar:StartMoving()
+                end
+            end)
+            selection:SetScript("OnDragStop", FinishDrag)
+        end
+        editing = true
+        Render(0, stats.longest, stats.total, 0)
+        selection:ShowHighlighted()
+    end)
+
+    EventRegistry:RegisterCallback("EditMode.Exit", function()
+        if editing then
+            FinishDrag()
+            editing = false
+            selection:Hide()
+            Render(liveDuration, liveLongest, liveTotal, liveProgress)
+        end
+    end)
+
+    return function(duration, longestDuration, totalDuration, progress)
+        liveDuration, liveLongest, liveTotal, liveProgress = duration, longestDuration, totalDuration, progress
+        if not editing then
+            Render(duration, longestDuration, totalDuration, progress)
+        end
+    end
 end
 
-function addon.CreatePanel(db, readStats)
+function addon.CreatePanel(db, readStats, history, readCharacterPace)
     local panel = CreateFrame("Frame", nil, UIParent)
     panel:Hide()
     panel:SetFrameStrata("MEDIUM")
@@ -173,6 +232,74 @@ function addon.CreatePanel(db, readStats)
     close:SetPoint("CENTER", full, "TOPLEFT", 250, -19)
     close:SetScript("OnClick", Close)
 
+    local function AccountTooltip(tooltip)
+        local rows = {}
+        for guid, jumps in pairs(db.jumps) do
+            local name = db.names[guid]
+            if not name and type(guid) == "string" and guid:match("^Player%-") then
+                local _, _, _, _, _, cachedName, realm = GetPlayerInfoByGUID(guid)
+                name = addon.FormatCharacterName(cachedName, realm)
+                db.names[guid] = name
+            end
+            rows[#rows + 1] = {name = name or "Unknown character", jumps = jumps}
+        end
+        table.sort(rows, function(a, b)
+            if a.jumps == b.jumps then
+                return a.name < b.name
+            end
+            return a.jumps > b.jumps
+        end)
+        tooltip:SetText("Account jumps")
+        if #rows == 0 then
+            tooltip:AddLine("No jumps recorded yet", 1, 1, 1)
+        end
+        for _, row in ipairs(rows) do
+            tooltip:AddDoubleLine(row.name, BreakUpLargeNumbers(row.jumps), 1, 1, 1, 1, 1, 1)
+        end
+    end
+
+    local function SessionTooltip(tooltip)
+        tooltip:SetText("Past sessions")
+        if #history == 0 then
+            tooltip:AddLine("No completed sessions yet", 1, 1, 1)
+            return
+        end
+        tooltip:AddDoubleLine("Session ended", "Jumps")
+        for _, session in ipairs(history) do
+            tooltip:AddDoubleLine(date("%Y-%m-%d %H:%M", session.time), BreakUpLargeNumbers(session.jumps),
+                1, 1, 1, 1, 1, 1)
+        end
+    end
+
+    local function PaceTooltip(tooltip)
+        tooltip:SetText("Character average")
+        tooltip:AddDoubleLine("Jumps per hour", BreakUpLargeNumbers(readCharacterPace()), 1, 1, 1, 1, 1, 1)
+    end
+
+    local tooltipOwner
+    local function CreateTooltipTarget(parent, fill)
+        local target = CreateFrame("Frame", nil, parent)
+        target:EnableMouse(true)
+        target.fillTooltip = fill
+        target:SetScript("OnEnter", function(self)
+            tooltipOwner = self
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            fill(GameTooltip)
+            GameTooltip:Show()
+        end)
+        local function HideTooltip(self)
+            if tooltipOwner == self then
+                tooltipOwner = nil
+                if GameTooltip:IsOwned(self) then
+                    GameTooltip:Hide()
+                end
+            end
+        end
+        target:SetScript("OnLeave", HideTooltip)
+        target:SetScript("OnHide", HideTooltip)
+        return target
+    end
+
     local function Readout(point, x, y, size, label)
         local field = full:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         field:SetPoint(point, full, "TOPLEFT", x, y)
@@ -199,23 +326,46 @@ function addon.CreatePanel(db, readStats)
     idle:SetTextColor(0.87, 0.72, 1)
     FitText(Readout("LEFT", 144, -162, 9), "Since last jump", 56)
 
+    local accountTarget = CreateTooltipTarget(full, AccountTooltip)
+    accountTarget:SetPoint("TOPLEFT", 164, -42)
+    accountTarget:SetSize(92, 46)
+    local sessionTarget = CreateTooltipTarget(full, SessionTooltip)
+    sessionTarget:SetPoint("TOPLEFT", 164, -92)
+    sessionTarget:SetSize(92, 46)
+    local paceTarget = CreateTooltipTarget(full, PaceTooltip)
+    paceTarget:SetPoint("TOPLEFT", 82, -151)
+    paceTarget:SetSize(47, 22)
+
     local compact = CreateFrame("Frame", nil, panel)
     compact:SetAllPoints()
-
-    local compactLabels = compact:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    compactLabels:SetPoint("TOPLEFT", 4, -4)
-    compactLabels:SetJustifyH("LEFT")
-    compactLabels:SetSpacing(3)
-    compactLabels:SetText("Character jumps\nAccount jumps\nSession jumps\nJumps per hour\nSince last jump")
-
-    local compactValues = compact:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    compactValues:SetPoint("TOPRIGHT", -compactRightInset, -4)
-    compactValues:SetJustifyH("RIGHT")
-    compactValues:SetSpacing(3)
 
     local compactClose = TextButton(compact, "x")
     compactClose:SetPoint("TOPRIGHT", -20, 0)
     compactClose:SetScript("OnClick", Close)
+
+    local compactValues = {}
+    local previousLabel
+    local tooltips = { [2] = AccountTooltip, [3] = SessionTooltip, [4] = PaceTooltip }
+    for index, name in ipairs({"Character jumps", "Account jumps", "Session jumps", "Jumps per hour", "Since last jump"}) do
+        local label = compact:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        label:SetText(name)
+        if previousLabel then
+            label:SetPoint("TOPLEFT", previousLabel, "BOTTOMLEFT", 0, -3)
+        else
+            label:SetPoint("TOPLEFT", 4, -4)
+        end
+        local value = compact:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        value:SetPoint("TOPRIGHT", label, "TOPLEFT", compactWidth - compactRightInset - 4, 0)
+        compactValues[index] = value
+        previousLabel = label
+
+        if tooltips[index] then
+            local target = CreateTooltipTarget(compact, tooltips[index])
+            target:SetPoint("TOPLEFT", label, "TOPLEFT")
+            target:SetPoint("BOTTOMRIGHT", value, "BOTTOMRIGHT")
+        end
+    end
+
     local toggle = TextButton(panel, "-")
 
     local function Refresh()
@@ -227,14 +377,21 @@ function addon.CreatePanel(db, readStats)
             local paceText = BreakUpLargeNumbers(jumpsPerHour)
             local idleText = FormatDuration(seconds)
             if db.minimal then
-                compactValues:SetText(("%s\n%s\n%s\n%s\n%s"):format(
-                    characterText, accountText, sessionText, paceText, idleText))
+                compactValues[1]:SetText(characterText)
+                compactValues[2]:SetText(accountText)
+                compactValues[3]:SetText(sessionText)
+                compactValues[4]:SetText(paceText)
+                compactValues[5]:SetText(idleText)
             else
                 FitText(character, characterText, 128)
                 FitText(account, accountText, 89)
                 FitText(session, sessionText, 89)
                 FitText(pace, paceText, 43)
                 FitText(idle, idleText, 51)
+            end
+            if tooltipOwner and GameTooltip:IsOwned(tooltipOwner) then
+                tooltipOwner.fillTooltip(GameTooltip)
+                GameTooltip:Show()
             end
         end
     end
