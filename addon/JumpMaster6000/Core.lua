@@ -8,8 +8,8 @@ local airtimeHeight, airtimeDescending, airJumpRequested
 local characterJumps, accountJumps, sessionJumps = 0, 0, 0
 local sessionStarted, sessionSaved, lastJump
 local characterSessions
-local activityAt, nextSignal
 local signalTimes = {420, 600, 720, 840, 900}
+local nextSignal = 1
 local signalFile = "Interface\\AddOns\\" .. addonName .. "\\Media\\Signal.ogg"
 local wasAirborne, wasWet, groundedSince
 local jumpRequested, pendingTakeoff
@@ -161,7 +161,6 @@ local function InSameJumpSpot()
 end
 
 local function RecordTakeoff(now)
-    activityAt, nextSignal = now, 1
     if not InSameJumpSpot() then
         spotJumps = 0
     end
@@ -174,6 +173,7 @@ local function RecordTakeoff(now)
     end
     spotJumps = spotJumps + 1
     lastJump = now
+    nextSignal = 1
     characterJumps = characterJumps + 1
     accountJumps = accountJumps + 1
     sessionJumps = sessionJumps + 1
@@ -259,12 +259,13 @@ end
 local function OnUpdate()
     local now = GetTime()
     CheckMovement(now)
+    local idle = now - (lastJump or sessionStarted)
     local delay = signalTimes[nextSignal]
-    if delay and now - activityAt >= delay then
+    if delay and idle >= delay then
         repeat
             nextSignal = nextSignal + 1
             delay = signalTimes[nextSignal]
-        until not delay or now - activityAt < delay
+        until not delay or idle < delay
         PlaySoundFile(signalFile, "Master")
     end
 end
@@ -364,7 +365,6 @@ events:SetScript("OnEvent", function(self, event)
         airtime.total = SavedDuration(airtime.total)
         db.airtime[character] = airtime
         sessionStarted = GetTime()
-        activityAt, nextSignal = sessionStarted, 1
         refresh = addon.CreatePanel(db, ReadStats, characterSessions.history, ReadCharacterPace)
         showAirtime = addon.CreateAirtimeBar(db, airtime)
     end
