@@ -1,8 +1,9 @@
 ## Interface: 16001
 ## Title: JumpMaster6000
 ## Notes: Tracks jumps and air time in World of Warcraft: Forever.
-## Version: 0.4.4.5
+## Version: 0.4.4.11
 ## SavedVariables: JumpMaster6000DB
 
+Themes.lua
 UI.lua
 Core.lua

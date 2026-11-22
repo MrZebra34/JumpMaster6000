@@ -4,7 +4,7 @@ A compact jump tracker for **World of Warcraft: Forever** (interface 16001).
 
 **Work in progress**
 
-JumpMaster6000 is under ~~active~~… some sort of development. The full display currently uses a **Shadow Priest mock-up theme**, which will be redesigned as more class, specialization and other themes are developed. A minimal text-only view is also available.
+JumpMaster6000 is under ~~active~~… some sort of development. It has a themed full panel and a minimal text-only view.
 
 **Upgrading from v0.3.0 or earlier.** The first login or UI reload after updating clears your saved jump totals across every character once. Your panel position, visibility, and display mode carry over.
 
@@ -26,7 +26,9 @@ Click **−** next to the close button for the borderless view, or **+** to rest
 
 The full panel expands inward from the minimal view's position. Place it in the bottom right to expand up and left. Minimizing returns it to its compact position.
 
-The full panel uses the Shadow Priest artwork on every character during the pilot. The largest tile shows character jumps. Account and session jumps sit to its right, with pace and the timer along the bottom.
+The full panel has artwork for all 27 Forever specializations. It follows the talent tree with the most spent points in the active build. A tie or a build with no spent points uses the original Shadow Priest panel. The largest tile shows character jumps. Account and session jumps sit to its right, with pace and the timer along the bottom.
+
+Right-click anywhere on the full or minimal tracker to open the theme selector, or use **`/jm6k themes`**. Pick a class and specialization to apply that theme for the current session, choose **Original Shadow Priest**, or select **Automatic** to follow your talents.
 
 Use the close button to hide the panel and `/jm6k` or `/jumpmaster6000` to bring it back. Tracking continues with the panel hidden. WoW saves your totals, panel position, and display mode on normal logout, exit, or UI reload.
 
@@ -42,4 +44,4 @@ A transparent Shadow Priest overlay appears after more than 1.5 seconds of unint
 
 Open WoW's **Edit Mode** to preview and drag **Air Time**. Its position saves when you drop it and is shared across characters.
 
-A fall that starts at nearly the same time as a jump press can be misclassified. The panel uses bundled Shadow Priest artwork and WoW's built-in fonts.
+A fall that starts at nearly the same time as a jump press can be misclassified. The panel uses bundled artwork and WoW's built-in fonts.

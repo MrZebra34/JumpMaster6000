@@ -2,6 +2,11 @@ local addonName, addon = ...
 local fullWidth, fullHeight = 268, 186
 local compactWidth, compactHeight = 188, 78
 local compactRightInset, compactBottomInset = 42, 8
+local lightPanes = {
+    ["Paladin-Holy"] = { side = true, footer = true },
+    ["Paladin-Retribution"] = { side = true },
+    ["Priest-Holy"] = { side = true, footer = true },
+}
 
 local function ExpansionOffset(left, top, width, height)
     -- Align inward growth to the compact stats, inside the control gutter and bottom padding.
@@ -184,6 +189,23 @@ function addon.CreatePanel(db, readStats, history, readCharacterPace)
     panel:SetClampedToScreen(true)
     panel:SetMovable(true)
 
+    local OpenThemeMenu
+    local function OnThemeMouseUp(_, button, isInside)
+        if button == "RightButton" and isInside then
+            OpenThemeMenu(panel)
+        end
+    end
+    local function PassOtherClicksThrough()
+        panel:SetPassThroughButtons("LeftButton", "MiddleButton", "Button4", "Button5")
+    end
+    panel:SetMouseClickEnabled(true)
+    panel:SetScript("OnMouseUp", OnThemeMouseUp)
+    if InCombatLockdown() then
+        panel:RegisterEvent("PLAYER_REGEN_ENABLED")
+    else
+        PassOtherClicksThrough()
+    end
+
     local function AnchorAtSavedPosition()
         panel:ClearAllPoints()
         if type(db.x) == "number" and type(db.y) == "number" then
@@ -202,6 +224,7 @@ function addon.CreatePanel(db, readStats, history, readCharacterPace)
     local header = CreateFrame("Frame", nil, panel)
     header:EnableMouse(true)
     header:RegisterForDrag("LeftButton")
+    header:SetScript("OnMouseUp", OnThemeMouseUp)
     header:SetScript("OnDragStart", function()
         panel:StartMoving()
     end)
@@ -226,11 +249,12 @@ function addon.CreatePanel(db, readStats, history, readCharacterPace)
     full:SetAllPoints()
     local artwork = full:CreateTexture(nil, "BACKGROUND")
     artwork:SetAllPoints()
-    artwork:SetTexture("Interface\\AddOns\\" .. addonName .. "\\Media\\ShadowPriest.tga")
+    local media = "Interface\\AddOns\\" .. addonName .. "\\Media\\"
 
     local close = TextButton(full, "×")
     close:SetPoint("CENTER", full, "TOPLEFT", 250, -19)
     close:SetScript("OnClick", Close)
+    close:SetScript("OnMouseUp", OnThemeMouseUp)
 
     local function AccountTooltip(tooltip)
         local rows = {}
@@ -280,6 +304,7 @@ function addon.CreatePanel(db, readStats, history, readCharacterPace)
     local function CreateTooltipTarget(parent, fill)
         local target = CreateFrame("Frame", nil, parent)
         target:EnableMouse(true)
+        target:SetScript("OnMouseUp", OnThemeMouseUp)
         target.fillTooltip = fill
         target:SetScript("OnEnter", function(self)
             tooltipOwner = self
@@ -315,16 +340,65 @@ function addon.CreatePanel(db, readStats, history, readCharacterPace)
     FitText(title, "JumpMaster6000", 122)
     title:SetTextColor(0.99, 0.85, 0.59)
     local character = Readout("CENTER", 79, -93, 40)
+    character:SetShadowColor(0, 0, 0, 1)
+    character:SetShadowOffset(2, -2)
     Readout("CENTER", 79, -123, 12, "Character jumps")
     local account = Readout("CENTER", 210, -70, 25)
-    Readout("CENTER", 210, -51, 10, "Account jumps")
+    account:SetShadowOffset(1.5, -1.5)
+    local accountLabel = Readout("CENTER", 210, -51, 10, "Account jumps")
     local session = Readout("CENTER", 210, -119, 25)
-    Readout("CENTER", 210, -101, 10, "Session jumps")
+    local sessionLabel = Readout("CENTER", 210, -101, 10, "Session jumps")
     local pace = Readout("RIGHT", 126, -162, 16)
-    FitText(Readout("LEFT", 19, -162, 10), "Jumps per hour", 60)
+    local paceLabel = Readout("LEFT", 19, -162, 10)
+    FitText(paceLabel, "Jumps per hour", 60)
     local idle = Readout("RIGHT", 254, -162, 13)
-    idle:SetTextColor(0.87, 0.72, 1)
-    FitText(Readout("LEFT", 144, -162, 9), "Since last jump", 56)
+    local idleLabel = Readout("LEFT", 144, -162, 9)
+    FitText(idleLabel, "Since last jump", 56)
+
+    local preview
+    local paneReadouts = {
+        side = {account, accountLabel, session, sessionLabel},
+        footer = {pace, paceLabel, idle, idleLabel},
+    }
+    local function ApplyTheme()
+        local original = addon.ThemeTextures.original
+        local theme = preview or addon.AutomaticTheme() or original
+        artwork:SetTexture(media .. theme .. ".tga")
+        if theme ~= original and not artwork:GetTexture() then
+            theme = original
+            artwork:SetTexture(media .. original .. ".tga")
+        end
+        local pale = lightPanes[theme]
+        for pane, fields in pairs(paneReadouts) do
+            for _, field in ipairs(fields) do
+                if pale and pale[pane] then
+                    field:SetTextColor(0.22, 0.13, 0.08)
+                    field:SetShadowColor(1, 0.93, 0.78, field == account and 0.85 or 0.5)
+                else
+                    if field == idle then
+                        field:SetTextColor(0.87, 0.72, 1)
+                    else
+                        field:SetTextColor(0.98, 0.94, 0.86)
+                    end
+                    field:SetShadowColor(0, 0, 0, 1)
+                end
+            end
+        end
+    end
+    panel:RegisterEvent("ACTIVE_COMBAT_CONFIG_CHANGED")
+    panel:RegisterEvent("TRAIT_CONFIG_UPDATED")
+    panel:SetScript("OnEvent", function(_, event, configID)
+        if event == "PLAYER_REGEN_ENABLED" then
+            PassOtherClicksThrough()
+            panel:UnregisterEvent(event)
+            return
+        end
+        if not preview and (event ~= "TRAIT_CONFIG_UPDATED"
+            or (C_ClassTalents and configID == C_ClassTalents.GetActiveConfigID())) then
+            ApplyTheme()
+        end
+    end)
+    ApplyTheme()
 
     local accountTarget = CreateTooltipTarget(full, AccountTooltip)
     accountTarget:SetPoint("TOPLEFT", 164, -42)
@@ -342,6 +416,7 @@ function addon.CreatePanel(db, readStats, history, readCharacterPace)
     local compactClose = TextButton(compact, "x")
     compactClose:SetPoint("TOPRIGHT", -20, 0)
     compactClose:SetScript("OnClick", Close)
+    compactClose:SetScript("OnMouseUp", OnThemeMouseUp)
 
     local compactValues = {}
     local previousLabel
@@ -367,6 +442,7 @@ function addon.CreatePanel(db, readStats, history, readCharacterPace)
     end
 
     local toggle = TextButton(panel, "-")
+    toggle:SetScript("OnMouseUp", OnThemeMouseUp)
 
     local function Refresh()
         if panel:IsVisible() then
@@ -445,9 +521,40 @@ function addon.CreatePanel(db, readStats, history, readCharacterPace)
         end
     end)
 
+    local function IsThemeSelected(theme)
+        return preview == theme
+    end
+    local function SelectTheme(theme)
+        preview = theme
+        ApplyTheme()
+    end
+    OpenThemeMenu = function(owner)
+        MenuUtil.CreateContextMenu(owner or UIParent, function(_, root)
+            root:CreateTitle("JumpMaster6000 Themes")
+            root:CreateRadio("Automatic (follow talents)", IsThemeSelected, SelectTheme)
+            root:CreateRadio("Original Shadow Priest", IsThemeSelected, SelectTheme, addon.ThemeTextures.original)
+            root:CreateDivider()
+
+            local lastClass, submenu
+            for _, name in ipairs(addon.ThemeNames) do
+                local class, spec = name:match("^([^-]+)-(.+)$")
+                if class ~= lastClass then
+                    lastClass = class
+                    submenu = root:CreateButton(class)
+                end
+                submenu:CreateRadio((spec:gsub("-", " ")), IsThemeSelected, SelectTheme, addon.ThemeTextures[name:lower()])
+            end
+        end)
+    end
+
     SLASH_JUMPMASTER60001 = "/jumpmaster6000"
     SLASH_JUMPMASTER60002 = "/jm6k"
-    SlashCmdList.JUMPMASTER6000 = function()
+    SlashCmdList.JUMPMASTER6000 = function(message)
+        local command = (message or ""):lower():match("^%s*(%S+)")
+        if command == "themes" or command == "theme" then
+            OpenThemeMenu()
+            return
+        end
         db.hidden = panel:IsShown()
         panel:SetShown(not db.hidden)
     end
