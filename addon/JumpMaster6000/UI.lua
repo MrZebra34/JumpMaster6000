@@ -1,6 +1,6 @@
 local addonName, addon = ...
 local fullWidth, fullHeight = 268, 186
-local compactWidth, compactHeight = 188, 78
+local compactWidth, compactHeight = 188, 106
 local compactRightInset, compactBottomInset = 42, 8
 local lightPanes = {
     ["Paladin-Holy"] = { side = true, footer = true },
@@ -182,7 +182,7 @@ function addon.CreateAirtimeBar(db, stats)
     end
 end
 
-function addon.CreatePanel(db, readStats, history, readCharacterPace)
+function addon.CreatePanel(db, readStats, history, readCharacterPace, airtime)
     local panel = CreateFrame("Frame", nil, UIParent)
     panel:Hide()
     panel:SetFrameStrata("MEDIUM")
@@ -298,6 +298,12 @@ function addon.CreatePanel(db, readStats, history, readCharacterPace)
     local function PaceTooltip(tooltip)
         tooltip:SetText("Character average")
         tooltip:AddDoubleLine("Jumps per hour", BreakUpLargeNumbers(readCharacterPace()), 1, 1, 1, 1, 1, 1)
+        if not db.minimal then
+            tooltip:AddLine(" ")
+            tooltip:AddLine("Air Time", 1, 0.82, 0)
+            tooltip:AddDoubleLine("Total", FormatAirtime(airtime.total), 1, 1, 1, 1, 1, 1)
+            tooltip:AddDoubleLine("Longest", FormatAirtime(airtime.longest), 1, 1, 1, 1, 1, 1)
+        end
     end
 
     local tooltipOwner
@@ -407,8 +413,8 @@ function addon.CreatePanel(db, readStats, history, readCharacterPace)
     sessionTarget:SetPoint("TOPLEFT", 164, -92)
     sessionTarget:SetSize(92, 46)
     local paceTarget = CreateTooltipTarget(full, PaceTooltip)
-    paceTarget:SetPoint("TOPLEFT", 82, -151)
-    paceTarget:SetSize(47, 22)
+    paceTarget:SetPoint("TOPLEFT", 19, -151)
+    paceTarget:SetSize(110, 22)
 
     local compact = CreateFrame("Frame", nil, panel)
     compact:SetAllPoints()
@@ -421,7 +427,10 @@ function addon.CreatePanel(db, readStats, history, readCharacterPace)
     local compactValues = {}
     local previousLabel
     local tooltips = { [2] = AccountTooltip, [3] = SessionTooltip, [4] = PaceTooltip }
-    for index, name in ipairs({"Character jumps", "Account jumps", "Session jumps", "Jumps per hour", "Since last jump"}) do
+    for index, name in ipairs({
+        "Character jumps", "Account jumps", "Session jumps", "Jumps per hour", "Since last jump",
+        "Total Air Time", "Longest Air Time",
+    }) do
         local label = compact:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         label:SetText(name)
         if previousLabel then
@@ -458,6 +467,8 @@ function addon.CreatePanel(db, readStats, history, readCharacterPace)
                 compactValues[3]:SetText(sessionText)
                 compactValues[4]:SetText(paceText)
                 compactValues[5]:SetText(idleText)
+                compactValues[6]:SetText(FormatAirtime(airtime.total))
+                compactValues[7]:SetText(FormatAirtime(airtime.longest))
             else
                 FitText(character, characterText, 128)
                 FitText(account, accountText, 89)

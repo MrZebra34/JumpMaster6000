@@ -4,7 +4,6 @@ local events = CreateFrame("Frame")
 local db, character, refresh
 local airtime, showAirtime
 local airtimeStarted, hideAirtimeAt
-local airtimeHeight, airtimeDescending, airJumpRequested
 local characterJumps, accountJumps, sessionJumps = 0, 0, 0
 local sessionStarted, sessionSaved, lastJump
 local characterSessions
@@ -69,44 +68,27 @@ end
 
 local function ResetAirtime()
     airtimeStarted, hideAirtimeAt = nil, nil
-    airtimeHeight, airtimeDescending, airJumpRequested = nil, nil, nil
     showAirtime()
 end
 
 local function UpdateAirtime(now, airborne)
     local duration = now - airtimeStarted
+    if not airborne then
+        airtimeStarted = nil
+    end
+    if duration <= airtimeThreshold then
+        return
+    end
+
     local previousBest = airtime.longest
     local longest = math.max(previousBest, duration)
     local total = airtime.total + duration
     if not airborne then
-        airtimeStarted = nil
         airtime.longest, airtime.total = longest, total
     end
-    if duration > airtimeThreshold then
-        hideAirtimeAt = not airborne and now + airtimeHold or nil
-        local progress = previousBest > 0 and math.min(duration / previousBest, 1) or 0
-        showAirtime(duration, airborne and previousBest or longest, total, progress)
-    end
-end
-
-local function RejumpedBetweenSamples(now)
-    local _, _, height = UnitPosition("player")
-    if not ReadableNumber(height) then
-        airtimeHeight, airtimeDescending = nil, nil
-        return false
-    end
-
-    local change = airtimeHeight and height - airtimeHeight or 0
-    airtimeHeight = height
-    if change < -0.02 then
-        airtimeDescending = true
-    elseif change > 0.02 then
-        local wasDescending = airtimeDescending
-        airtimeDescending = false
-        -- A jump press alone can happen mid-fall. A new ascent indicates a re-jump.
-        return wasDescending and airJumpRequested and now - airJumpRequested <= takeoffWindow
-    end
-    return false
+    hideAirtimeAt = not airborne and now + airtimeHold or nil
+    local progress = previousBest > 0 and math.min(duration / previousBest, 1) or 0
+    showAirtime(duration, airborne and previousBest or longest, total, progress)
 end
 
 local function TrackAirtime(now, airborne, tookOff, canTrack)
@@ -120,13 +102,7 @@ local function TrackAirtime(now, airborne, tookOff, canTrack)
         airtimeStarted = now
     end
     if airtimeStarted then
-        if airborne and RejumpedBetweenSamples(now) then
-            UpdateAirtime(now, false)
-            ResetAirtime()
-            airtimeStarted = now
-        else
-            UpdateAirtime(now, airborne)
-        end
+        UpdateAirtime(now, airborne)
     end
     if hideAirtimeAt and now >= hideAirtimeAt then
         hideAirtimeAt = nil
@@ -281,7 +257,8 @@ hooksecurefunc("JumpOrAscendStart", function()
         if not IsFalling() then
             CheckMovement(now)
         elseif airtimeStarted then
-            airJumpRequested = now
+            -- shortcut: discard a possible missed landing until the client exposes a reliable landing signal.
+            ResetAirtime()
         end
     end
     if wasAirborne ~= nil and CanTrackMovement() then
@@ -365,7 +342,7 @@ events:SetScript("OnEvent", function(self, event)
         airtime.total = SavedDuration(airtime.total)
         db.airtime[character] = airtime
         sessionStarted = GetTime()
-        refresh = addon.CreatePanel(db, ReadStats, characterSessions.history, ReadCharacterPace)
+        refresh = addon.CreatePanel(db, ReadStats, characterSessions.history, ReadCharacterPace, airtime)
         showAirtime = addon.CreateAirtimeBar(db, airtime)
     end
 
