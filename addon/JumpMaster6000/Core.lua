@@ -67,8 +67,10 @@ local function SavedDuration(seconds)
 end
 
 local function ResetAirtime()
-    airtimeStarted, hideAirtimeAt = nil, nil
-    showAirtime()
+    if airtimeStarted or hideAirtimeAt then
+        airtimeStarted, hideAirtimeAt = nil, nil
+        showAirtime()
+    end
 end
 
 local function UpdateAirtime(now, airborne)
@@ -175,10 +177,10 @@ local function TrackWater(now, wet, airborne, movementAllowed)
     elseif airborne and waterJumpAt then
         waterJumpAt, jumpInputAt = nil, nil
         RecordTakeoff(now)
-    elseif not airborne and not waterJumpAt and waterContactAt
+    elseif not airborne and waterContactAt
         and now >= math.max(waterContactAt, groundedSince or 0) + stableGroundTime then
         -- A dry falling sample can be another water hop. Re-arm Air Time on dry ground.
-        waterContactAt = nil
+        waterContactAt, waterJumpAt, jumpInputAt = nil, nil, nil
     end
 end
 
@@ -268,6 +270,9 @@ hooksecurefunc("JumpOrAscendStart", function()
         elseif not wasAirborne then
             waterJumpAt = nil
             jumpRequested = jumpRequested or now
+            if IsFalling() then
+                CheckMovement(now)
+            end
         end
     end
 end)
@@ -297,6 +302,7 @@ events:SetScript("OnEvent", function(self, event)
         wasAirborne, wasWet, groundedSince = nil, nil, nil
         jumpRequested, pendingTakeoff = nil, nil
         jumpHeld, jumpInputAt, waterJumpAt, waterContactAt = nil, nil, nil, nil
+        spotX, spotY, spotMap, spotJumps = nil, nil, nil, 0
         if showAirtime then
             ResetAirtime()
         end

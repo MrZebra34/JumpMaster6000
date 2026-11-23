@@ -45,3 +45,7 @@ A transparent Shadow Priest overlay appears after more than 1.5 seconds of unint
 The minimal view shows Total Air Time and Longest Air Time. In the full view, hover over **Jumps per hour** to see both values. Open WoW's **Edit Mode** to preview and drag **Air Time**. Its position saves when you drop it and is shared across characters.
 
 A fall that starts at nearly the same time as a jump press can be misclassified. The panel uses bundled artwork and WoW's built-in fonts.
+
+## Offline checks
+
+From this project directory, run `lua5.1 tests/check.lua` with a Lua 5.1 interpreter. With Lupa installed, you can also run `python -c "from lupa.lua51 import LuaRuntime; LuaRuntime().execute(open('tests/check.lua', encoding='utf-8').read())"`.

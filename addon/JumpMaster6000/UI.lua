@@ -8,10 +8,10 @@ local lightPanes = {
     ["Priest-Holy"] = { side = true, footer = true },
 }
 
-local function ExpansionOffset(left, top, width, height)
+local function ExpansionOffset(left, top)
     -- Align inward growth to the compact stats, inside the control gutter and bottom padding.
-    local x = left + width / 2 > 0 and compactWidth - compactRightInset - fullWidth or 0
-    local y = top - height / 2 < 0 and fullHeight - compactHeight + compactBottomInset or 0
+    local x = left + compactWidth / 2 > 0 and compactWidth - compactRightInset - fullWidth or 0
+    local y = top - compactHeight / 2 < 0 and fullHeight - compactHeight + compactBottomInset or 0
     return x, y
 end
 
@@ -195,25 +195,25 @@ function addon.CreatePanel(db, readStats, history, readCharacterPace, airtime)
             OpenThemeMenu(panel)
         end
     end
+    local passThroughFrames = {panel}
     local function PassOtherClicksThrough()
-        panel:SetPassThroughButtons("LeftButton", "MiddleButton", "Button4", "Button5")
+        for _, frame in ipairs(passThroughFrames) do
+            frame:SetPassThroughButtons("LeftButton", "MiddleButton", "Button4", "Button5")
+        end
     end
     panel:SetMouseClickEnabled(true)
     panel:SetScript("OnMouseUp", OnThemeMouseUp)
-    if InCombatLockdown() then
-        panel:RegisterEvent("PLAYER_REGEN_ENABLED")
-    else
-        PassOtherClicksThrough()
-    end
 
+    local offsetX, offsetY = 0, 0
     local function AnchorAtSavedPosition()
+        offsetX, offsetY = 0, 0
         panel:ClearAllPoints()
         if type(db.x) == "number" and type(db.y) == "number" then
             -- Preserve the compact position encoded by existing saves.
             local left, top = db.x - fullWidth / 2, db.y + fullHeight / 2
             if not db.minimal then
-                local x, y = ExpansionOffset(left, top, compactWidth, compactHeight)
-                left, top = left + x, top + y
+                offsetX, offsetY = ExpansionOffset(left, top)
+                left, top = left + offsetX, top + offsetY
             end
             panel:SetPoint("TOPLEFT", UIParent, "CENTER", left, top)
         else
@@ -233,7 +233,8 @@ function addon.CreatePanel(db, readStats, history, readCharacterPace, airtime)
         local screenX, screenY = UIParent:GetCenter()
         local left, top = panel:GetLeft() - screenX, panel:GetTop() - screenY
         if not db.minimal then
-            local x, y = ExpansionOffset(left, top, fullWidth, fullHeight)
+            -- Keep the current expansion direction while it still maps to a valid compact position.
+            local x, y = ExpansionOffset(left - offsetX, top - offsetY)
             left, top = left - x, top - y
         end
         db.x, db.y = left + fullWidth / 2, top - fullHeight / 2
@@ -309,6 +310,7 @@ function addon.CreatePanel(db, readStats, history, readCharacterPace, airtime)
     local tooltipOwner
     local function CreateTooltipTarget(parent, fill)
         local target = CreateFrame("Frame", nil, parent)
+        table.insert(passThroughFrames, target)
         target:EnableMouse(true)
         target:SetScript("OnMouseUp", OnThemeMouseUp)
         target.fillTooltip = fill
@@ -448,6 +450,12 @@ function addon.CreatePanel(db, readStats, history, readCharacterPace, airtime)
             target:SetPoint("TOPLEFT", label, "TOPLEFT")
             target:SetPoint("BOTTOMRIGHT", value, "BOTTOMRIGHT")
         end
+    end
+
+    if InCombatLockdown() then
+        panel:RegisterEvent("PLAYER_REGEN_ENABLED")
+    else
+        PassOtherClicksThrough()
     end
 
     local toggle = TextButton(panel, "-")
