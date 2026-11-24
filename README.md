@@ -36,6 +36,8 @@ On land, a jump input can earn one credit when WoW reports a new takeoff. A samp
 
 Moving dry jumps earn credit according to the time between observed takeoffs. From a fresh start, jumps spaced 0.20 seconds apart earn 12 credits over 20 jumps and 150 over 300. A run of 100 jumps earns 50 credits at 0.40-second spacing, 75 at 0.50, or 90 at 0.55. At 0.60 seconds or more each jump is eligible for full credit. The limiter carries partial credit between jumps and allows up to 75 credits in any 30 seconds. Changing direction or moving to a new spot carries the same limits forward.
 
+During a lightly used 30-second window, up to three quick takeoffs that cadence would skip can earn credit early. If fast jumping continues, later cadence credits repay the advances. Ordinary jumps spaced at least 0.60 seconds apart are exempt from repayment. The burst and rolling limits still apply.
+
 Within 0.7 yards of the first takeoff in a streak, jumps earn credit at most once every 0.8 seconds. After ten credits in that spot, move outside the radius to start a new streak.
 
 Jumps from the water's surface can earn credit when Forever reports a clear airborne exit after a tap or held jump input. Each re-hop needs a fresh water contact. Surface jumps retain their 0.30-second minimum spacing and a separate reserve of 1.7 credits refilling at 1.3 per second.

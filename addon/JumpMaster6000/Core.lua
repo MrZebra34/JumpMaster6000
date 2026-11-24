@@ -22,6 +22,7 @@ local dryBudget = {capacity = 3, perSecond = 2.5}
 local lastDryTakeoff, dryFraction = nil, 0
 local dryWindow, dryWindowLimit = 30, 75
 local dryCreditTimes, nextDrySlot = {}, 1
+local dryAdvances, maxAdvances = {}, 3
 local waterBudget = {capacity = 1.7, perSecond = 1.3}
 local jumpDataVersion = 1
 local airtimeThreshold, airtimeHold = 1.5, 3
@@ -135,20 +136,44 @@ local function DryCreditWeight(gap)
     return 0.90 + (gap - 0.55) * 2
 end
 
+local function DryWindowUsed(now)
+    local used = 0
+    for _, at in ipairs(dryCreditTimes) do
+        if now + 1e-8 < at + dryWindow then used = used + 1 end
+    end
+    return used
+end
+
 local function SpendDryCredit(now)
     local gap = lastDryTakeoff and now - lastDryTakeoff or math.huge
     lastDryTakeoff = now
     if gap >= dryWindow then dryFraction = 0 end
     dryFraction = dryFraction + DryCreditWeight(gap)
     -- Round cumulative fractional credit to the nearest jump, with half ties deferred.
-    if dryFraction <= 0.5 + 1e-8 then return false end
-    dryFraction = dryFraction - 1
+    local needsAdvance = dryFraction <= 0.5 + 1e-8
+    if not needsAdvance then dryFraction = dryFraction - 1 end
+    while dryAdvances[1] and now >= dryAdvances[1] + dryWindow do
+        table.remove(dryAdvances, 1)
+    end
+    local repay = false
+    if needsAdvance or (#dryAdvances > 0 and gap + 1e-8 < 0.60) then
+        -- At low activity, pay up to three cadence skips early. Retire one
+        -- allowance at 25, 27 and 29 credits in the rolling 30-second window.
+        local allowed = math.min(maxAdvances, math.max(0, math.floor((30 - DryWindowUsed(now)) / 2)))
+        if needsAdvance and #dryAdvances >= allowed then return false end
+        repay = not needsAdvance and #dryAdvances > allowed
+    end
 
     -- The slot being reused holds the oldest of the last 75 credited takeoffs.
     local oldest = dryCreditTimes[nextDrySlot]
     if oldest and now + 1e-8 < oldest + dryWindow then return false end
     if not SpendJumpCredit(dryBudget, now) then return false end
+    if repay then
+        table.remove(dryAdvances, 1)
+        return false
+    end
     dryCreditTimes[nextDrySlot] = now
+    if needsAdvance then dryAdvances[#dryAdvances + 1] = now end
     nextDrySlot = nextDrySlot % dryWindowLimit + 1
     return true
 end
