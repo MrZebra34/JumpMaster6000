@@ -34,13 +34,11 @@ Use the close button to hide the panel and `/jm6k` or `/jumpmaster6000` to bring
 
 On land, a jump input can earn one credit when WoW reports a new takeoff. A sampled landing allows the next jump to count immediately while moving. Extra presses during the same flight earn no additional credit.
 
-Moving dry jumps earn credit according to the time between observed takeoffs. From a fresh start, jumps spaced 0.20 seconds apart earn 12 credits over 20 jumps and 150 over 300. A run of 100 jumps earns 50 credits at 0.40-second spacing, 75 at 0.50, or 90 at 0.55. At 0.60 seconds or more each jump is eligible for full credit. The limiter carries partial credit between jumps and allows up to 75 credits in any 30 seconds. Changing direction or moving to a new spot carries the same limits forward.
+Moving jumps on land draw from a reserve of ten credits that refills at 100 per minute. Jumping at a normal pace never runs it dry. Faster jumping, such as a quick run up a slope, earns full credit until the reserve runs out, then earns at most 100 jumps per minute however fast you jump. Sustained spam of 30 takeoffs on land within 12 seconds, standing or moving, pauses all jump credit for one minute across your account, after a chat warning at 22. Ordinary slope runs stay well below this.
 
-During a lightly used 30-second window, up to three quick takeoffs that cadence would skip can earn credit early. If fast jumping continues, later cadence credits repay the advances. Ordinary jumps spaced at least 0.60 seconds apart are exempt from repayment. The burst and rolling limits still apply.
+Within 0.7 yards of the first takeoff in a streak, up to ten jumps earn credit, at least 0.25 seconds apart. Move outside the radius to start a new streak.
 
-Within 0.7 yards of the first takeoff in a streak, jumps earn credit at most once every 0.8 seconds. After ten credits in that spot, move outside the radius to start a new streak.
-
-Jumps from the water's surface can earn credit when Forever reports a clear airborne exit after a tap or held jump input. Each re-hop needs a fresh water contact. Surface jumps retain their 0.30-second minimum spacing and a separate reserve of 1.7 credits refilling at 1.3 per second.
+Jumps from the water's surface can earn credit when Forever reports a clear airborne exit after a tap or held jump input. Each re-hop needs a fresh water contact. Surface jumps retain their 0.25-second minimum spacing and a separate reserve of 1.7 credits refilling at 1.3 per second.
 
 A transparent Shadow Priest overlay appears after more than 1.5 seconds of uninterrupted airtime. The timer sits between Longest Air Time and Total Air Time. The diamond ornament fills toward your previous airtime record and stays full if you pass it. The final reading holds for up to three seconds after landing. A new takeoff clears it and starts its own timer. Longest and total are saved per character for completed dry jumps and falls longer than 1.5 seconds. Water contact cancels the current airtime attempt. Air Time resumes after returning to dry ground. Flight paths, active flying, and vehicle travel are excluded.
 

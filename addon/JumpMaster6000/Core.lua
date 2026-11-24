@@ -10,19 +10,23 @@ local characterSessions
 local signalTimes = {420, 600, 720, 840, 900}
 local nextSignal = 1
 local signalFile = "Interface\\AddOns\\" .. addonName .. "\\Media\\Signal.ogg"
+local warningSound = "Interface\\AddOns\\" .. addonName .. "\\Media\\Signal2.ogg"
+local pauseSound = "Interface\\AddOns\\" .. addonName .. "\\Media\\Signal3.ogg"
 local wasAirborne, wasWet, groundedSince
 local jumpRequested
 local jumpHeld, jumpInputAt, waterJumpAt, waterContactAt
 local takeoffWindow, surfaceExitWindow = 0.25, 0.30
 local stableGroundTime = 0.05
-local spotRadius, spotInterval, spotLimit = 0.7, 0.8, 10
+local spotRadius, spotLimit = 0.7, 10
+-- Same-spot and water takeoffs closer than this to the last credited jump are treated as duplicates.
+local minimumSpacing = 0.25
 local spotX, spotY, spotMap
 local spotJumps = 0
-local dryBudget = {capacity = 3, perSecond = 2.5}
-local lastDryTakeoff, dryFraction = nil, 0
-local dryWindow, dryWindowLimit = 30, 75
-local dryCreditTimes, nextDrySlot = {}, 1
-local dryAdvances, maxAdvances = {}, 3
+-- Moving jumps: a burst of ten, then at most 100 credits a minute at any cadence.
+local dryBudget = {capacity = 10, perSecond = 100 / 60}
+-- Sustained spam: warn at 22 and pause all credit for a minute at 30 takeoffs on land within 12 seconds, standing or moving.
+local spamWindow, spamWarning, spamLimit, pauseDuration = 12, 22, 30, 60
+local spamTakeoffs, spamWarnedAt = {}, nil
 local waterBudget = {capacity = 1.7, perSecond = 1.3}
 local jumpDataVersion = 1
 local airtimeThreshold, airtimeHold = 1.5, 3
@@ -126,58 +130,6 @@ local function SpendJumpCredit(budget, now)
     return true
 end
 
--- Fraction of one credit earned per observed takeoff, interpolated between test cadences.
--- At the fastest cadences the burst budget and rolling ceiling set the payout.
-local function DryCreditWeight(gap)
-    if gap <= 0.20 or gap >= 0.60 then return 1 end
-    if gap <= 0.40 then return 1 - (gap - 0.20) * 2.5 end
-    if gap <= 0.50 then return 0.50 + (gap - 0.40) * 2.5 end
-    if gap <= 0.55 then return 0.75 + (gap - 0.50) * 3 end
-    return 0.90 + (gap - 0.55) * 2
-end
-
-local function DryWindowUsed(now)
-    local used = 0
-    for _, at in ipairs(dryCreditTimes) do
-        if now + 1e-8 < at + dryWindow then used = used + 1 end
-    end
-    return used
-end
-
-local function SpendDryCredit(now)
-    local gap = lastDryTakeoff and now - lastDryTakeoff or math.huge
-    lastDryTakeoff = now
-    if gap >= dryWindow then dryFraction = 0 end
-    dryFraction = dryFraction + DryCreditWeight(gap)
-    -- Round cumulative fractional credit to the nearest jump, with half ties deferred.
-    local needsAdvance = dryFraction <= 0.5 + 1e-8
-    if not needsAdvance then dryFraction = dryFraction - 1 end
-    while dryAdvances[1] and now >= dryAdvances[1] + dryWindow do
-        table.remove(dryAdvances, 1)
-    end
-    local repay = false
-    if needsAdvance or (#dryAdvances > 0 and gap + 1e-8 < 0.60) then
-        -- At low activity, pay up to three cadence skips early. Retire one
-        -- allowance at 25, 27 and 29 credits in the rolling 30-second window.
-        local allowed = math.min(maxAdvances, math.max(0, math.floor((30 - DryWindowUsed(now)) / 2)))
-        if needsAdvance and #dryAdvances >= allowed then return false end
-        repay = not needsAdvance and #dryAdvances > allowed
-    end
-
-    -- The slot being reused holds the oldest of the last 75 credited takeoffs.
-    local oldest = dryCreditTimes[nextDrySlot]
-    if oldest and now + 1e-8 < oldest + dryWindow then return false end
-    if not SpendJumpCredit(dryBudget, now) then return false end
-    if repay then
-        table.remove(dryAdvances, 1)
-        return false
-    end
-    dryCreditTimes[nextDrySlot] = now
-    if needsAdvance then dryAdvances[#dryAdvances + 1] = now end
-    nextDrySlot = nextDrySlot % dryWindowLimit + 1
-    return true
-end
-
 local function InSameJumpSpot()
     local x, y, _, map = UnitPosition("player")
     if not (ReadableNumber(x) and ReadableNumber(y) and ReadableNumber(map)) then
@@ -192,18 +144,48 @@ local function InSameJumpSpot()
     return false
 end
 
+local function AnnouncePause()
+    print("JumpMaster6000 paused jump credit for 1 minute after sustained jump spam.")
+    PlaySoundFile(pauseSound, "Master")
+end
+
+-- Returns true when this takeoff starts a credit pause.
+local function DetectSpam(now)
+    while spamTakeoffs[1] and spamTakeoffs[1] <= now - spamWindow do
+        table.remove(spamTakeoffs, 1)
+    end
+    spamTakeoffs[#spamTakeoffs + 1] = now
+    if #spamTakeoffs >= spamLimit then
+        spamTakeoffs, spamWarnedAt = {}, nil
+        db.creditPausedUntil = GetServerTime() + pauseDuration
+        AnnouncePause()
+        return true
+    end
+    if #spamTakeoffs >= spamWarning and not (spamWarnedAt and now < spamWarnedAt + spamWindow) then
+        spamWarnedAt = now
+        print("JumpMaster6000: keep jumping this fast and jump credit pauses for 1 minute.")
+        PlaySoundFile(warningSound, "Master")
+    end
+end
+
 local function RecordTakeoff(now, fromWater)
+    if db.creditPausedUntil then
+        if GetServerTime() < db.creditPausedUntil then
+            return
+        end
+        db.creditPausedUntil = nil
+    end
+    if not fromWater and DetectSpam(now) then
+        return
+    end
     local sameSpot = InSameJumpSpot()
     if not sameSpot then
         spotJumps = 0
     end
-    if spotJumps >= spotLimit or ((fromWater or sameSpot) and lastJump and now < lastJump + 0.30)
-        or (spotJumps > 0 and now < lastJump + spotInterval) then
+    if spotJumps >= spotLimit or ((fromWater or sameSpot) and lastJump and now < lastJump + minimumSpacing) then
         return
     end
-    if fromWater then
-        if not SpendJumpCredit(waterBudget, now) then return end
-    elseif not SpendDryCredit(now) then
+    if not SpendJumpCredit(fromWater and waterBudget or dryBudget, now) then
         return
     end
     spotJumps = spotJumps + 1
@@ -373,6 +355,9 @@ events:SetScript("OnEvent", function(self, event)
         characterSessions.history = type(characterSessions.history) == "table" and characterSessions.history or {}
         db.sessions[character] = characterSessions
         db.jumpCreditPausedAt, db.jumpCreditPausedUntil = nil, nil
+        -- Keep an active pause across reloads, but never longer than one pause from now.
+        local pausedUntil = tonumber(db.creditPausedUntil)
+        db.creditPausedUntil = pausedUntil and math.min(pausedUntil, GetServerTime() + pauseDuration) or nil
         for guid, count in pairs(db.jumps) do
             if type(count) == "number" and count >= 0 and count < math.huge then
                 accountJumps = accountJumps + count

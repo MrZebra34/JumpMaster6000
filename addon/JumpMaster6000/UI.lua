@@ -371,10 +371,10 @@ function addon.CreatePanel(db, readStats, history, readCharacterPace, airtime)
     local function ApplyTheme()
         local original = addon.ThemeTextures.original
         local theme = preview or addon.AutomaticTheme() or original
-        artwork:SetTexture(media .. theme .. ".tga")
+        artwork:SetTexture(media .. theme .. ".blp")
         if theme ~= original and not artwork:GetTexture() then
             theme = original
-            artwork:SetTexture(media .. original .. ".tga")
+            artwork:SetTexture(media .. original .. ".blp")
         end
         local pale = lightPanes[theme]
         for pane, fields in pairs(paneReadouts) do
