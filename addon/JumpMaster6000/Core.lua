@@ -11,17 +11,18 @@ local signalTimes = {420, 600, 720, 840, 900}
 local nextSignal = 1
 local signalFile = "Interface\\AddOns\\" .. addonName .. "\\Media\\Signal.ogg"
 local wasAirborne, wasWet, groundedSince
-local jumpRequested, pendingTakeoff
+local jumpRequested
 local jumpHeld, jumpInputAt, waterJumpAt, waterContactAt
 local takeoffWindow, surfaceExitWindow = 0.25, 0.30
-local stableGroundTime, shortContactAirtime = 0.05, 0.20
-local duplicateInterval = 0.30
+local stableGroundTime = 0.05
 local spotRadius, spotInterval, spotLimit = 0.7, 0.8, 10
 local spotX, spotY, spotMap
 local spotJumps = 0
-local creditsPerSecond = 1.3
-local creditCapacity = 3 - creditsPerSecond -- Keeps the burst to two credits per rolling second.
-local credits, lastCreditUpdate = creditCapacity, nil
+local dryBudget = {capacity = 3, perSecond = 2.5}
+local lastDryTakeoff, dryFraction = nil, 0
+local dryWindow, dryWindowLimit = 30, 75
+local dryCreditTimes, nextDrySlot = {}, 1
+local waterBudget = {capacity = 1.7, perSecond = 1.3}
 local jumpDataVersion = 1
 local airtimeThreshold, airtimeHold = 1.5, 3
 
@@ -112,15 +113,43 @@ local function TrackAirtime(now, airborne, tookOff, canTrack)
     end
 end
 
-local function SpendJumpCredit(now)
-    local elapsed = now - (lastCreditUpdate or now)
-    credits = math.min(creditCapacity, credits + elapsed * creditsPerSecond)
-    lastCreditUpdate = now
-    if credits < 1 then
+local function SpendJumpCredit(budget, now)
+    local elapsed = now - (budget.updatedAt or now)
+    budget.credits = math.min(budget.capacity, (budget.credits or budget.capacity) + elapsed * budget.perSecond)
+    budget.updatedAt = now
+    if budget.credits < 1 then
         return false
     end
 
-    credits = credits - 1
+    budget.credits = budget.credits - 1
+    return true
+end
+
+-- Fraction of one credit earned per observed takeoff, interpolated between test cadences.
+-- At the fastest cadences the burst budget and rolling ceiling set the payout.
+local function DryCreditWeight(gap)
+    if gap <= 0.20 or gap >= 0.60 then return 1 end
+    if gap <= 0.40 then return 1 - (gap - 0.20) * 2.5 end
+    if gap <= 0.50 then return 0.50 + (gap - 0.40) * 2.5 end
+    if gap <= 0.55 then return 0.75 + (gap - 0.50) * 3 end
+    return 0.90 + (gap - 0.55) * 2
+end
+
+local function SpendDryCredit(now)
+    local gap = lastDryTakeoff and now - lastDryTakeoff or math.huge
+    lastDryTakeoff = now
+    if gap >= dryWindow then dryFraction = 0 end
+    dryFraction = dryFraction + DryCreditWeight(gap)
+    -- Round cumulative fractional credit to the nearest jump, with half ties deferred.
+    if dryFraction <= 0.5 + 1e-8 then return false end
+    dryFraction = dryFraction - 1
+
+    -- The slot being reused holds the oldest of the last 75 credited takeoffs.
+    local oldest = dryCreditTimes[nextDrySlot]
+    if oldest and now + 1e-8 < oldest + dryWindow then return false end
+    if not SpendJumpCredit(dryBudget, now) then return false end
+    dryCreditTimes[nextDrySlot] = now
+    nextDrySlot = nextDrySlot % dryWindowLimit + 1
     return true
 end
 
@@ -138,15 +167,18 @@ local function InSameJumpSpot()
     return false
 end
 
-local function RecordTakeoff(now)
-    if not InSameJumpSpot() then
+local function RecordTakeoff(now, fromWater)
+    local sameSpot = InSameJumpSpot()
+    if not sameSpot then
         spotJumps = 0
     end
-    if spotJumps >= spotLimit or (lastJump and now < lastJump + duplicateInterval)
+    if spotJumps >= spotLimit or ((fromWater or sameSpot) and lastJump and now < lastJump + 0.30)
         or (spotJumps > 0 and now < lastJump + spotInterval) then
         return
     end
-    if not SpendJumpCredit(now) then
+    if fromWater then
+        if not SpendJumpCredit(waterBudget, now) then return end
+    elseif not SpendDryCredit(now) then
         return
     end
     spotJumps = spotJumps + 1
@@ -166,7 +198,7 @@ local function TrackWater(now, wet, airborne, movementAllowed)
 
     if wet then
         waterContactAt = now
-        jumpRequested, pendingTakeoff = nil, nil
+        jumpRequested = nil
         if movementAllowed then
             if jumpHeld then
                 waterJumpAt = now
@@ -176,7 +208,7 @@ local function TrackWater(now, wet, airborne, movementAllowed)
         end
     elseif airborne and waterJumpAt then
         waterJumpAt, jumpInputAt = nil, nil
-        RecordTakeoff(now)
+        RecordTakeoff(now, true)
     elseif not airborne and waterContactAt
         and now >= math.max(waterContactAt, groundedSince or 0) + stableGroundTime then
         -- A dry falling sample can be another water hop. Re-arm Air Time on dry ground.
@@ -191,7 +223,7 @@ local function CheckMovement(now)
     local wet = IsWet()
     local leftWaterOnGround = wasWet and not wet and not airborne
     wasAirborne, wasWet = airborne, wet
-    if not (wet or waterContactAt or landed or tookOff or pendingTakeoff or jumpRequested or airtimeStarted or hideAirtimeAt) then
+    if not (wet or waterContactAt or landed or tookOff or jumpRequested or airtimeStarted or hideAirtimeAt) then
         return
     end
 
@@ -201,17 +233,6 @@ local function CheckMovement(now)
     end
     TrackWater(now, wet, airborne, movementAllowed)
     TrackAirtime(now, airborne, tookOff, movementAllowed and not waterContactAt)
-
-    local canTrack = movementAllowed and not wet
-    if pendingTakeoff then
-        if not airborne or not canTrack then
-            pendingTakeoff = nil
-        elseif now >= pendingTakeoff + shortContactAirtime then
-            local takeoffTime = pendingTakeoff
-            pendingTakeoff = nil
-            RecordTakeoff(takeoffTime)
-        end
-    end
 
     if not jumpRequested then
         return
@@ -223,14 +244,9 @@ local function CheckMovement(now)
     jumpRequested = nil
 
     -- shortcut: a simultaneous ledge fall can resemble takeoff. Use a native jump event if one becomes available.
-    if withinWindow and tookOff and canTrack then
+    if withinWindow and tookOff and movementAllowed and not wet then
         jumpInputAt = nil
-        if groundedSince and now < groundedSince + stableGroundTime then
-            -- A short landing can be real. Wait for the airborne flag to stay true.
-            pendingTakeoff = now
-        else
-            RecordTakeoff(now)
-        end
+        RecordTakeoff(now)
     end
 end
 
@@ -266,7 +282,7 @@ hooksecurefunc("JumpOrAscendStart", function()
     if wasAirborne ~= nil and CanTrackMovement() then
         jumpHeld, jumpInputAt = true, now
         if fromWater then
-            waterJumpAt, jumpRequested, pendingTakeoff = now, nil, nil
+            waterJumpAt, jumpRequested = now, nil
         elseif not wasAirborne then
             waterJumpAt = nil
             jumpRequested = jumpRequested or now
@@ -300,7 +316,7 @@ events:SetScript("OnEvent", function(self, event)
 
     if event == "PLAYER_LEAVING_WORLD" then
         wasAirborne, wasWet, groundedSince = nil, nil, nil
-        jumpRequested, pendingTakeoff = nil, nil
+        jumpRequested = nil
         jumpHeld, jumpInputAt, waterJumpAt, waterContactAt = nil, nil, nil, nil
         spotX, spotY, spotMap, spotJumps = nil, nil, nil, 0
         if showAirtime then
