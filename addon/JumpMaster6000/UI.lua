@@ -350,7 +350,7 @@ function addon.CreatePanel(db, readStats, history, readCharacterPace, airtime)
     local character = Readout("CENTER", 79, -93, 40)
     character:SetShadowColor(0, 0, 0, 1)
     character:SetShadowOffset(2, -2)
-    Readout("CENTER", 79, -123, 12, "Character jumps")
+    local characterLabel = Readout("CENTER", 79, -123, 12, "Character jumps")
     local account = Readout("CENTER", 210, -70, 25)
     account:SetShadowOffset(1.5, -1.5)
     local accountLabel = Readout("CENTER", 210, -51, 10, "Account jumps")
@@ -363,7 +363,7 @@ function addon.CreatePanel(db, readStats, history, readCharacterPace, airtime)
     local idleLabel = Readout("LEFT", 144, -162, 9)
     FitText(idleLabel, "Since last jump", 56)
 
-    local preview
+    local preview, paused
     local paneReadouts = {
         side = {account, accountLabel, session, sessionLabel},
         footer = {pace, paceLabel, idle, idleLabel},
@@ -377,9 +377,15 @@ function addon.CreatePanel(db, readStats, history, readCharacterPace, airtime)
             artwork:SetTexture(media .. original .. ".blp")
         end
         local pale = lightPanes[theme]
+        for _, field in ipairs({character, characterLabel}) do
+            if paused then field:SetTextColor(1, 0.15, 0.15) else field:SetTextColor(0.98, 0.94, 0.86) end
+        end
         for pane, fields in pairs(paneReadouts) do
             for _, field in ipairs(fields) do
-                if pale and pale[pane] then
+                if paused then
+                    field:SetTextColor(1, 0.15, 0.15)
+                    field:SetShadowColor(0, 0, 0, 1)
+                elseif pale and pale[pane] then
                     field:SetTextColor(0.22, 0.13, 0.08)
                     field:SetShadowColor(1, 0.93, 0.78, field == account and 0.85 or 0.5)
                 else
@@ -426,7 +432,7 @@ function addon.CreatePanel(db, readStats, history, readCharacterPace, airtime)
     compactClose:SetScript("OnClick", Close)
     compactClose:SetScript("OnMouseUp", OnThemeMouseUp)
 
-    local compactValues = {}
+    local compactValues, compactColors = {}, {}
     local previousLabel
     local tooltips = { [2] = AccountTooltip, [3] = SessionTooltip, [4] = PaceTooltip }
     for index, name in ipairs({
@@ -443,6 +449,8 @@ function addon.CreatePanel(db, readStats, history, readCharacterPace, airtime)
         local value = compact:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         value:SetPoint("TOPRIGHT", label, "TOPLEFT", compactWidth - compactRightInset - 4, 0)
         compactValues[index] = value
+        compactColors[#compactColors + 1] = {label, label:GetTextColor()}
+        compactColors[#compactColors + 1] = {value, value:GetTextColor()}
         previousLabel = label
 
         if tooltips[index] then
@@ -463,7 +471,15 @@ function addon.CreatePanel(db, readStats, history, readCharacterPace, airtime)
 
     local function Refresh()
         if panel:IsVisible() then
-            local characterJumps, accountJumps, sessionJumps, jumpsPerHour, seconds = readStats()
+            local characterJumps, accountJumps, sessionJumps, jumpsPerHour, seconds, isPaused = readStats()
+            if paused ~= isPaused then
+                paused = isPaused
+                ApplyTheme()
+                for _, entry in ipairs(compactColors) do
+                    if paused then entry[1]:SetTextColor(1, 0.15, 0.15)
+                    else entry[1]:SetTextColor(unpack(entry, 2)) end
+                end
+            end
             local characterText = BreakUpLargeNumbers(characterJumps)
             local accountText = BreakUpLargeNumbers(accountJumps)
             local sessionText = BreakUpLargeNumbers(sessionJumps)

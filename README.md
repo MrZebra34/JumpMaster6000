@@ -34,7 +34,7 @@ Use the close button to hide the panel and `/jm6k` or `/jumpmaster6000` to bring
 
 On land, a jump input can earn one credit when WoW reports a new takeoff. A sampled landing allows the next jump to count immediately while moving. Extra presses during the same flight earn no additional credit.
 
-Moving jumps on land draw from a reserve of ten credits that refills at 100 per minute. Jumping at a normal pace never runs it dry. Faster jumping, such as a quick run up a slope, earns full credit until the reserve runs out, then earns at most 100 jumps per minute however fast you jump. Sustained spam of 30 takeoffs on land within 12 seconds, standing or moving, pauses all jump credit for one minute across your account, after a chat warning at 22. Ordinary slope runs stay well below this.
+Moving jumps on land draw from a reserve of ten credits that refills at 100 per minute. Jumping at a normal pace never runs it dry. Faster jumping, such as a quick run up a slope, earns full credit until the reserve runs out, then earns at most 100 jumps per minute however fast you jump. Sustained spam of 30 takeoffs on land within 11 seconds, standing or moving, pauses all jump credit across your account, after a chat warning at 22. The first pause lasts one minute; further pauses within ten minutes after the preceding pause ends last five, five, then ten minutes, capped at ten. After ten minutes without another pause, the sequence resets. Ordinary slope runs stay well below this.
 
 Within 0.7 yards of the first takeoff in a streak, up to ten jumps earn credit, at least 0.25 seconds apart. Move outside the radius to start a new streak.
 

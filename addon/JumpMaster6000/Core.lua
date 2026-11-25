@@ -5,7 +5,7 @@ local db, character, refresh
 local airtime, showAirtime
 local airtimeStarted, hideAirtimeAt
 local characterJumps, accountJumps, sessionJumps = 0, 0, 0
-local sessionStarted, sessionSaved, lastJump
+local sessionStarted, sessionSaved, lastJump, idleResumeAt, wasCreditPaused
 local characterSessions
 local signalTimes = {420, 600, 720, 840, 900}
 local nextSignal = 1
@@ -24,8 +24,9 @@ local spotX, spotY, spotMap
 local spotJumps = 0
 -- Moving jumps: a burst of ten, then at most 100 credits a minute at any cadence.
 local dryBudget = {capacity = 10, perSecond = 100 / 60}
--- Sustained spam: warn at 22 and pause all credit for a minute at 30 takeoffs on land within 12 seconds, standing or moving.
-local spamWindow, spamWarning, spamLimit, pauseDuration = 12, 22, 30, 60
+-- Sustained spam: warn at 22 and pause credit at 30 land takeoffs within 11 seconds.
+local spamWindow, spamWarning, spamLimit = 11, 22, 30
+local pauseDurations, escalationWindow = {60, 300, 300, 600}, 600
 local spamTakeoffs, spamWarnedAt = {}, nil
 local waterBudget = {capacity = 1.7, perSecond = 1.3}
 local jumpDataVersion = 1
@@ -35,10 +36,21 @@ local function JumpsPerHour(jumps, seconds)
     return seconds >= 1 and math.floor(jumps * 3600 / seconds + 0.5) or 0
 end
 
+local function CreditPaused(now)
+    local paused = not not (db.creditPausedUntil and GetServerTime() < db.creditPausedUntil)
+    if wasCreditPaused and not paused then
+        idleResumeAt = now - math.max(0, GetServerTime() - (db.creditPausedUntil or GetServerTime()))
+    end
+    wasCreditPaused = paused
+    return paused
+end
+
 local function ReadStats()
     local now = GetTime()
     local pace = JumpsPerHour(sessionJumps, now - sessionStarted)
-    return characterJumps, accountJumps, sessionJumps, pace, math.floor(now - (lastJump or sessionStarted))
+    local paused = CreditPaused(now)
+    local idleSince = math.max(lastJump or sessionStarted, idleResumeAt or sessionStarted)
+    return characterJumps, accountJumps, sessionJumps, pace, paused and 0 or math.max(0, math.floor(now - idleSince)), not not paused
 end
 
 local function ReadCharacterPace()
@@ -144,8 +156,17 @@ local function InSameJumpSpot()
     return false
 end
 
-local function AnnouncePause()
-    print("JumpMaster6000 paused jump credit for 1 minute after sustained jump spam.")
+local function NextPauseStage(now)
+    local stage = db.creditPauseStage
+    if type(stage) == "number" and stage >= 1 and stage <= #pauseDurations and stage == math.floor(stage)
+        and type(db.creditEscalationUntil) == "number" and now < db.creditEscalationUntil then
+        return math.min(stage + 1, #pauseDurations)
+    end
+    return 1
+end
+
+local function AnnouncePause(minutes)
+    print(("JumpMaster6000 paused jump credit for %d minute%s after sustained jump spam."):format(minutes, minutes == 1 and "" or "s"))
     PlaySoundFile(pauseSound, "Master")
 end
 
@@ -157,13 +178,20 @@ local function DetectSpam(now)
     spamTakeoffs[#spamTakeoffs + 1] = now
     if #spamTakeoffs >= spamLimit then
         spamTakeoffs, spamWarnedAt = {}, nil
-        db.creditPausedUntil = GetServerTime() + pauseDuration
-        AnnouncePause()
+        local serverNow = GetServerTime()
+        local stage = NextPauseStage(serverNow)
+        local duration = pauseDurations[stage]
+        db.creditPauseStage = stage
+        db.creditPausedUntil = serverNow + duration
+        db.creditEscalationUntil = db.creditPausedUntil + escalationWindow
+        wasCreditPaused = true
+        AnnouncePause(duration / 60)
+        refresh()
         return true
     end
     if #spamTakeoffs >= spamWarning and not (spamWarnedAt and now < spamWarnedAt + spamWindow) then
         spamWarnedAt = now
-        print("JumpMaster6000: keep jumping this fast and jump credit pauses for 1 minute.")
+        print("JumpMaster6000: keep jumping this fast and jump credit will be paused.")
         PlaySoundFile(warningSound, "Master")
     end
 end
@@ -259,6 +287,7 @@ end
 
 local function OnUpdate()
     local now = GetTime()
+    CreditPaused(now)
     CheckMovement(now)
     local idle = now - (lastJump or sessionStarted)
     local delay = signalTimes[nextSignal]
@@ -357,7 +386,7 @@ events:SetScript("OnEvent", function(self, event)
         db.jumpCreditPausedAt, db.jumpCreditPausedUntil = nil, nil
         -- Keep an active pause across reloads, but never longer than one pause from now.
         local pausedUntil = tonumber(db.creditPausedUntil)
-        db.creditPausedUntil = pausedUntil and math.min(pausedUntil, GetServerTime() + pauseDuration) or nil
+        db.creditPausedUntil = pausedUntil and math.min(pausedUntil, GetServerTime() + pauseDurations[#pauseDurations]) or nil
         for guid, count in pairs(db.jumps) do
             if type(count) == "number" and count >= 0 and count < math.huge then
                 accountJumps = accountJumps + count
@@ -374,6 +403,7 @@ events:SetScript("OnEvent", function(self, event)
         airtime.total = SavedDuration(airtime.total)
         db.airtime[character] = airtime
         sessionStarted = GetTime()
+        CreditPaused(sessionStarted)
         refresh = addon.CreatePanel(db, ReadStats, characterSessions.history, ReadCharacterPace, airtime)
         showAirtime = addon.CreateAirtimeBar(db, airtime)
     end
